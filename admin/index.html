@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Vivis Fashion Hair</title>
+  <link rel="icon" type="image/png" href="/assets/ico/vivisfashionhair.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+  <!-- LOGIN -->
+  <div id="login-screen" class="login-screen">
+    <div class="login-box">
+      <h1>Vivis Fashion Hair</h1>
+      <p>Painel Administrativo</p>
+      <form id="login-form">
+        <input type="password" id="login-password" placeholder="Senha" required autocomplete="current-password">
+        <button type="submit">Entrar</button>
+        <p id="login-error" class="error hidden"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADMIN PANEL -->
+  <div id="admin-panel" class="admin-panel hidden">
+    <header class="admin-header">
+      <h1>Painel Admin</h1>
+      <div class="header-actions">
+        <a href="/" class="btn-link">Ver Site</a>
+        <button id="btn-logout" class="btn-danger">Sair</button>
+      </div>
+    </header>
+
+    <nav class="admin-nav">
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="carrossel">Carrossel</button>
+      <button class="tab-btn" data-tab="grid">Grid Galeria</button>
+      <button class="tab-btn" data-tab="estoque">Estoque</button>
+    </nav>
+
+    <!-- DASHBOARD -->
+    <section id="tab-dashboard" class="tab-content active">
+      <div class="card">
+        <h2>Cliques em "Agendar um horário"</h2>
+        <div class="click-counter">
+          <span id="click-count" class="big-number">0</span>
+          <p>pessoas clicaram</p>
+        </div>
+        <button id="btn-reset-clicks" class="btn-secondary">Resetar contador</button>
+      </div>
+    </section>
+
+    <!-- CARROSSEL -->
+    <section id="tab-carrossel" class="tab-content">
+      <div class="card">
+        <h2>Fotos do Carrossel</h2>
+        <p class="subtitle">Adicione ou remova fotos que aparecem no carrossel da galeria.</p>
+        <div class="upload-area">
+          <form id="form-carrossel" enctype="multipart/form-data">
+            <label class="upload-btn">
+              <span>+ Adicionar Foto</span>
+              <input type="file" id="input-carrossel" accept="image/jpeg,image/png,image/webp" hidden>
+            </label>
+          </form>
+        </div>
+        <div id="carrossel-images" class="image-grid"></div>
+      </div>
+    </section>
+
+    <!-- GRID -->
+    <section id="tab-grid" class="tab-content">
+      <div class="card">
+        <h2>Fotos do Grid</h2>
+        <p class="subtitle">Clique em uma posição para adicionar ou trocar a foto. São 16 posições (4x4).</p>
+        <div id="grid-positions" class="grid-positions"></div>
+        <input type="file" id="input-grid" accept="image/jpeg,image/png,image/webp" hidden>
+      </div>
+    </section>
+
+    <!-- ESTOQUE -->
+    <section id="tab-estoque" class="tab-content">
+      <div class="card">
+        <h2>Gestão de Estoque</h2>
+        <p class="subtitle">Controle seus produtos e materiais.</p>
+        <form id="form-estoque" class="estoque-form">
+          <input type="text" id="est-nome" placeholder="Nome do produto" required maxlength="200">
+          <input type="number" id="est-qtd" placeholder="Quantidade" min="0" required>
+          <input type="number" id="est-preco" placeholder="Preço (R$)" min="0" step="0.01">
+          <input type="text" id="est-obs" placeholder="Observação" maxlength="500">
+          <button type="submit" class="btn-primary">Adicionar</button>
+        </form>
+        <div id="estoque-list" class="estoque-table-wrap"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    window.API_BASE_URL = window.API_BASE_URL || ''
+  </script>
+
+  <script src="/admin/admin.js"></script>
+</body>
+</html>
