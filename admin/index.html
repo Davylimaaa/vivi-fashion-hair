@@ -98,10 +98,7 @@
   </div>
 
   <script>
-    window.API_BASE_URL =
-      window.location.hostname === 'localhost'
-        ? ''
-        : 'https://api.vivisfashionhair.com.br'
+    window.API_BASE_URL = window.API_BASE_URL || ''
   </script>
 
   <script src="/admin/admin.js"></script>
