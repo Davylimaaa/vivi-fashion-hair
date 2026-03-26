@@ -8,7 +8,11 @@ const crypto = require('crypto')
 const app = express()
 const PORT = process.env.PORT || 3000
 const NODE_ENV = process.env.NODE_ENV || 'development'
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || ''
+const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGIN || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean)
+const HAS_CROSS_ORIGIN = FRONTEND_ORIGINS.length > 0
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex')
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'vivis2026'
 
@@ -72,11 +76,11 @@ const upload = multer({
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
-if (FRONTEND_ORIGIN) {
+if (HAS_CROSS_ORIGIN) {
   app.use((req, res, next) => {
     const requestOrigin = req.headers.origin
-    if (requestOrigin === FRONTEND_ORIGIN) {
-      res.header('Access-Control-Allow-Origin', FRONTEND_ORIGIN)
+    if (requestOrigin && FRONTEND_ORIGINS.includes(requestOrigin)) {
+      res.header('Access-Control-Allow-Origin', requestOrigin)
       res.header('Access-Control-Allow-Credentials', 'true')
       res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
       res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
@@ -91,7 +95,7 @@ if (FRONTEND_ORIGIN) {
   })
 }
 
-if (NODE_ENV === 'production') {
+if (NODE_ENV === 'production' || HAS_CROSS_ORIGIN) {
   app.set('trust proxy', 1)
 }
 
@@ -102,8 +106,8 @@ app.use(
     saveUninitialized: false,
     cookie: {
       maxAge: 2 * 60 * 60 * 1000,
-      sameSite: FRONTEND_ORIGIN ? 'none' : 'lax',
-      secure: !!FRONTEND_ORIGIN
+      sameSite: HAS_CROSS_ORIGIN ? 'none' : 'lax',
+      secure: HAS_CROSS_ORIGIN ? 'auto' : false
     } // 2 hours
   })
 )
@@ -295,7 +299,7 @@ app.listen(PORT, () => {
   if (!process.env.ADMIN_PASSWORD) {
     console.log('Senha padrão: vivis2026')
   }
-  if (FRONTEND_ORIGIN) {
-    console.log(`CORS habilitado para: ${FRONTEND_ORIGIN}`)
+  if (HAS_CROSS_ORIGIN) {
+    console.log(`CORS habilitado para: ${FRONTEND_ORIGINS.join(', ')}`)
   }
 })
