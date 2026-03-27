@@ -66,6 +66,34 @@ function assetUrl(src) {
  return API_BASE_URL ? `${API_BASE_URL}/${cleanSrc}` : `/${cleanSrc}`
 }
 
+function withViewOverlay(imgSrc, altText) {
+ return `
+  <div class="img-zoom-wrap">
+   <img src="${imgSrc}" alt="${altText}">
+   <div class="img-ver-overlay"><span>Ver</span></div>
+  </div>`
+}
+
+function enhanceGalleryGridWithViewButtons() {
+ const grid = document.querySelector('.grid-4x4')
+ if (!grid) return
+
+ const bareImages = grid.querySelectorAll(':scope > img')
+ bareImages.forEach((img, index) => {
+  const wrap = document.createElement('div')
+  wrap.className = 'img-zoom-wrap'
+  img.replaceWith(wrap)
+  wrap.appendChild(img)
+
+  const overlay = document.createElement('div')
+  overlay.className = 'img-ver-overlay'
+  overlay.innerHTML = '<span>Ver</span>'
+  wrap.appendChild(overlay)
+
+  if (!img.alt) img.alt = `Grid ${index + 1}`
+ })
+}
+
 /*
   Track "Agendar" button clicks
 */
@@ -102,7 +130,7 @@ function loadDynamicImages() {
      const grid = document.querySelector('.grid-4x4')
      if (grid) {
       grid.innerHTML = gridItems.map((img, i) =>
-       `<img src="${assetUrl(img.src)}" alt="Grid ${i + 1}">`
+       withViewOverlay(assetUrl(img.src), `Grid ${i + 1}`)
       ).join('')
      }
     }
@@ -135,6 +163,7 @@ function loadDynamicImages() {
   .catch(() => {}) // Fallback: keep static images if server is not running
 }
 
+  enhanceGalleryGridWithViewButtons()
 loadDynamicImages()
 
 /*
@@ -239,9 +268,9 @@ document.addEventListener('keydown', (e) => {
  if (e.key === 'Escape') closeLightbox()
 })
 
-document.querySelectorAll('.img-zoom-wrap').forEach(wrap => {
- wrap.addEventListener('click', () => {
-  const img = wrap.querySelector('img')
-  if (img) openLightbox(img.src)
- })
+document.addEventListener('click', (e) => {
+ const wrap = e.target.closest('.img-zoom-wrap')
+ if (!wrap) return
+ const img = wrap.querySelector('img')
+ if (img) openLightbox(img.src)
 })

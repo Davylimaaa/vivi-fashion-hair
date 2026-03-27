@@ -875,6 +875,11 @@ footer .social a:hover {
   border-radius: 0.25rem;
 }
 
+.grid-4x4 .img-zoom-wrap {
+  display: block;
+  width: 100%;
+}
+
 .video-bg {
   position: relative;
   width: 100%;
