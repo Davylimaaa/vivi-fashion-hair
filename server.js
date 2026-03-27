@@ -8,6 +8,7 @@ const crypto = require('crypto')
 const app = express()
 const PORT = process.env.PORT || 3000
 const NODE_ENV = process.env.NODE_ENV || 'development'
+const IS_PRODUCTION = NODE_ENV === 'production'
 const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGIN || '')
   .split(',')
   .map(origin => origin.trim())
@@ -159,8 +160,8 @@ app.use(
     saveUninitialized: false,
     cookie: {
       maxAge: 2 * 60 * 60 * 1000,
-      sameSite: HAS_CROSS_ORIGIN ? 'none' : 'lax',
-      secure: HAS_CROSS_ORIGIN ? 'auto' : false
+      sameSite: IS_PRODUCTION ? 'none' : 'lax',
+      secure: IS_PRODUCTION ? 'auto' : false
     } // 2 hours
   })
 )

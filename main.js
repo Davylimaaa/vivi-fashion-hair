@@ -94,6 +94,12 @@ function enhanceGalleryGridWithViewButtons() {
  })
 }
 
+function setVisible(selector, isVisible) {
+ const el = document.querySelector(selector)
+ if (!el) return
+ el.style.display = isVisible ? '' : 'none'
+}
+
 /*
   Track "Agendar" button clicks
 */
@@ -121,7 +127,10 @@ function loadDynamicImages() {
       `<div class="galeria-slide swiper-slide"><img src="${assetUrl(img.src)}" alt="Imagem ${i + 1}"></div>`
      ).join('')
      swiper.update()
+     setVisible('.galeria-carousel', true)
     }
+   } else {
+    setVisible('.galeria-carousel', false)
    }
    // Grid - filter out null positions
    if (data.grid) {
@@ -132,23 +141,34 @@ function loadDynamicImages() {
       grid.innerHTML = gridItems.map((img, i) =>
        withViewOverlay(assetUrl(img.src), `Grid ${i + 1}`)
       ).join('')
+      setVisible('.galeria-grid', true)
      }
+    } else {
+     setVisible('.galeria-grid', false)
     }
+   } else {
+    setVisible('.galeria-grid', false)
    }
    // Site images (capa, sobrenos, antes, depois)
    if (data.siteImages) {
     const siteMap = {
-     capa:     '#home .image img',
-     sobrenos: '#about .image img',
-     antes:    '#testimonials .antes img',
-     depois:   '#testimonials .depois img'
+     capa:     { img: '#home .image img', block: '#home .image' },
+     sobrenos: { img: '#about .image img', block: '#about .image' },
+     antes:    { img: '#testimonials .antes img', block: '#testimonials .antes' },
+     depois:   { img: '#testimonials .depois img', block: '#testimonials .depois' }
     }
-    for (const [name, selector] of Object.entries(siteMap)) {
-     if (data.siteImages[name] && data.siteImages[name].src) {
-      const el = document.querySelector(selector)
+    for (const [name, refs] of Object.entries(siteMap)) {
+     const hasImage = !!(data.siteImages[name] && data.siteImages[name].src)
+     setVisible(refs.block, hasImage)
+     if (hasImage) {
+      const el = document.querySelector(refs.img)
       if (el) el.src = assetUrl(data.siteImages[name].src)
      }
     }
+
+    const hasBefore = !!(data.siteImages.antes && data.siteImages.antes.src)
+    const hasAfter = !!(data.siteImages.depois && data.siteImages.depois.src)
+    setVisible('#testimonials', hasBefore && hasAfter)
    }
    // Video
    if (data.video && data.video.src) {
@@ -157,7 +177,10 @@ function loadDynamicImages() {
     if (videoSource && videoEl) {
      videoSource.src = assetUrl(data.video.src)
      videoEl.load()
+     setVisible('.video-bg', true)
     }
+   } else {
+    setVisible('.video-bg', false)
    }
   })
   .catch(() => {}) // Fallback: keep static images if server is not running
