@@ -138,7 +138,7 @@ body {
 
 /*============= LOGO ============*/
 .logo {
-  font: 700 1.48rem var(--title-font), sans-serif;
+  font: 700 1.56rem var(--title-font), sans-serif;
   color: var(--title-color);
 }
 
