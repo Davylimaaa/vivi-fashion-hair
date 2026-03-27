@@ -16,9 +16,16 @@ const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGIN || '')
 const HAS_CROSS_ORIGIN = FRONTEND_ORIGINS.length > 0
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex')
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'vivis2026'
+const PERSISTENT_ROOT = process.env.RENDER_DISK_PATH || process.env.STORAGE_ROOT || ''
+const DATA_DIR = PERSISTENT_ROOT ? path.join(PERSISTENT_ROOT, 'data') : path.join(__dirname, 'data')
+const UPLOADS_DIR = PERSISTENT_ROOT ? path.join(PERSISTENT_ROOT, 'images') : path.join(__dirname, 'images')
+const BUNDLED_IMAGES_DIR = path.join(__dirname, 'images')
 
 // --- Data file ---
-const DATA_FILE = path.join(__dirname, 'data', 'data.json')
+const DATA_FILE = path.join(DATA_DIR, 'data.json')
+
+fs.mkdirSync(DATA_DIR, { recursive: true })
+fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 
 const SITE_IMAGE_DEFAULTS = {
   capa: 'images/capa.png',
@@ -125,7 +132,7 @@ const ADMIN_PASSWORD_HASH = crypto
 
 // --- Multer config for image uploads ---
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, 'images')),
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase()
     const safeName = `upload-${Date.now()}${ext}`
@@ -190,6 +197,10 @@ app.use(
 )
 
 // Serve static files
+app.use('/images', express.static(UPLOADS_DIR))
+if (path.resolve(UPLOADS_DIR) !== path.resolve(BUNDLED_IMAGES_DIR)) {
+  app.use('/images', express.static(BUNDLED_IMAGES_DIR))
+}
 app.use(express.static(__dirname))
 
 // --- Auth middleware ---
@@ -282,7 +293,7 @@ app.post('/api/images/grid', requireAuth, upload.single('image'), (req, res) => 
   // Remove old file if it was an upload
   const old = data.grid[pos]
   if (old && old.filename && old.filename.startsWith('upload-')) {
-    const oldPath = path.join(__dirname, 'images', old.filename)
+    const oldPath = path.join(UPLOADS_DIR, old.filename)
     if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
   }
   data.grid[pos] = { filename: req.file.filename, src: `images/${req.file.filename}` }
@@ -299,7 +310,7 @@ app.delete('/api/images/carrossel/:index', requireAuth, (req, res) => {
   }
   const removed = data.carrossel.splice(index, 1)[0]
   // Delete file
-  const filePath = path.join(__dirname, 'images', removed.filename)
+  const filePath = path.join(UPLOADS_DIR, removed.filename)
   if (removed.filename.startsWith('upload-') && fs.existsSync(filePath)) {
     fs.unlinkSync(filePath)
   }
@@ -318,7 +329,7 @@ app.post('/api/images/site/:name', requireAuth, upload.single('image'), (req, re
   if (!data.siteImages) data.siteImages = {}
   const old = data.siteImages[name]
   if (old && old.filename && old.filename.startsWith('upload-')) {
-    const oldPath = path.join(__dirname, 'images', old.filename)
+    const oldPath = path.join(UPLOADS_DIR, old.filename)
     if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
   }
   data.siteImages[name] = { filename: req.file.filename, src: `images/${req.file.filename}` }
@@ -334,7 +345,7 @@ app.delete('/api/images/site/:name', requireAuth, (req, res) => {
   if (!data.siteImages) data.siteImages = {}
   const old = data.siteImages[name]
   if (old && old.filename && old.filename.startsWith('upload-')) {
-    const oldPath = path.join(__dirname, 'images', old.filename)
+    const oldPath = path.join(UPLOADS_DIR, old.filename)
     if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
   }
   data.siteImages[name] = { src: SITE_IMAGE_DEFAULTS[name] }
@@ -350,7 +361,7 @@ app.delete('/api/images/grid/:index', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Posição inválida ou vazia' })
   }
   const removed = data.grid[index]
-  const filePath = path.join(__dirname, 'images', removed.filename)
+  const filePath = path.join(UPLOADS_DIR, removed.filename)
   if (removed.filename.startsWith('upload-') && fs.existsSync(filePath)) {
     fs.unlinkSync(filePath)
   }
@@ -361,7 +372,7 @@ app.delete('/api/images/grid/:index', requireAuth, (req, res) => {
 
 // --- Video management ---
 const videoStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, 'images')),
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase()
     cb(null, `video-${Date.now()}${ext}`)
@@ -388,7 +399,7 @@ app.post('/api/video', requireAuth, videoUpload.single('video'), (req, res) => {
   const data = loadData()
   const old = data.video
   if (old && old.filename && old.filename.startsWith('video-')) {
-    const oldPath = path.join(__dirname, 'images', old.filename)
+    const oldPath = path.join(UPLOADS_DIR, old.filename)
     if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
   }
   data.video = { filename: req.file.filename, src: `images/${req.file.filename}` }
@@ -400,7 +411,7 @@ app.delete('/api/video', requireAuth, (req, res) => {
   const data = loadData()
   const old = data.video
   if (old && old.filename && old.filename.startsWith('video-')) {
-    const oldPath = path.join(__dirname, 'images', old.filename)
+    const oldPath = path.join(UPLOADS_DIR, old.filename)
     if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
   }
   data.video = { src: VIDEO_DEFAULT }
@@ -462,10 +473,15 @@ app.get('/admin', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`)
   console.log(`Painel admin em http://localhost:${PORT}/admin`)
+  console.log(`Data file: ${DATA_FILE}`)
+  console.log(`Uploads dir: ${UPLOADS_DIR}`)
   if (!process.env.ADMIN_PASSWORD) {
     console.log('Senha padrão: vivis2026')
   }
   if (HAS_CROSS_ORIGIN) {
     console.log(`CORS habilitado para: ${FRONTEND_ORIGINS.join(', ')}`)
+  }
+  if (!PERSISTENT_ROOT) {
+    console.log('Armazenamento persistente não configurado; uploads e dados usarão o disco local da aplicação.')
   }
 })
