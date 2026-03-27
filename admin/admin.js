@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const API_BASE_URL = (window.API_BASE_URL || '').replace(/\/+$/, '')
+  const API_BASE_URL = window.location.origin
 
   function apiUrl(path) {
     return API_BASE_URL ? `${API_BASE_URL}${path}` : path

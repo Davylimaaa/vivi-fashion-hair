@@ -53,7 +53,7 @@ const swiper = new Swiper('.swiper', {
  }
 })
 
-const API_BASE_URL = (window.API_BASE_URL || '').replace(/\/+$/, '')
+const API_BASE_URL = window.location.origin
 
 function apiUrl(path) {
  return API_BASE_URL ? `${API_BASE_URL}${path}` : path
@@ -120,7 +120,8 @@ const scrollReveal = ScrollReveal({
  origin: top,
  distance: '0px',
  duration: 700,
- reset: true
+ reset: false,
+ viewFactor: 0.2
 })
 
 scrollReveal.reveal(
@@ -129,7 +130,7 @@ scrollReveal.reveal(
    #services .header, #services .card,
    #galeria .galeria-carousel, #galeria .galeria-grid, #galeria .video-bg,
    #testimonials header, #testimonials .testimonials,
-   #contact .text, #contact .links,
+   #contact .links,
    footer .brand, footer .social
    `,
  { interval: 100 }
