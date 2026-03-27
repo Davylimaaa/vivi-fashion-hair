@@ -445,6 +445,11 @@ nav.show div.icon-close {
   margin-bottom: 2rem;
 }
 
+#contact .text .button {
+  display: inline-flex;
+  margin-bottom: 1rem;
+}
+
 #contact .button i,
 #contact ul li i {
   font-size: 1.5rem;
@@ -476,6 +481,12 @@ footer.section {
 footer .logo {
   display: inline-block;
   margin-bottom: 1.5rem;
+  color: var(--text-color-light);
+}
+
+footer .logo span,
+.logo-alt span {
+  color: var(--text-color-light);
 }
 
 footer .brand p {

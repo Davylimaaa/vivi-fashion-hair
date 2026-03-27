@@ -12,6 +12,18 @@ document.addEventListener('DOMContentLoaded', () => {
     return API_BASE_URL ? `${API_BASE_URL}/${cleanSrc}` : `/${cleanSrc}`
   }
 
+  async function parseError(res, fallbackMessage) {
+    const err = await res.json().catch(() => ({}))
+    return err.error || fallbackMessage
+  }
+
+  function handleUnauthorized() {
+    adminPanel.classList.add('hidden')
+    loginScreen.classList.remove('hidden')
+    loginError.textContent = 'Sessão expirada. Faça login novamente.'
+    loginError.classList.remove('hidden')
+  }
+
   const loginScreen = document.getElementById('login-screen')
   const adminPanel = document.getElementById('admin-panel')
   const loginForm = document.getElementById('login-form')
@@ -78,6 +90,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Dashboard ---
   async function loadDashboard() {
     const res = await fetch(apiUrl('/api/clicks'), { credentials: 'include' })
+    if (res.status === 401) return handleUnauthorized()
+    if (!res.ok) return
     const data = await res.json()
     document.getElementById('click-count').textContent = data.clicks
   }
@@ -91,6 +105,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Images ---
   async function loadImages() {
     const res = await fetch(apiUrl('/api/images'), { credentials: 'include' })
+    if (res.status === 401) return handleUnauthorized()
+    if (!res.ok) return
     const data = await res.json()
     renderCarrosselImages(data.carrossel)
     renderGridPositions(data.grid)
@@ -154,9 +170,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (res.ok) {
       loadImages()
+    } else if (res.status === 401) {
+      handleUnauthorized()
     } else {
-      const err = await res.json()
-      alert(err.error || 'Erro ao enviar imagem')
+      const err = await parseError(res, 'Erro ao enviar imagem')
+      alert(err)
     }
 
     e.target.value = ''
@@ -192,9 +210,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (res.ok) {
       loadImages()
+    } else if (res.status === 401) {
+      handleUnauthorized()
     } else {
-      const err = await res.json()
-      alert(err.error || 'Erro ao enviar imagem')
+      const err = await parseError(res, 'Erro ao enviar imagem')
+      alert(err)
     }
 
     pendingGridPos = null
@@ -207,7 +227,14 @@ document.addEventListener('DOMContentLoaded', () => {
       method: 'DELETE',
       credentials: 'include'
     })
-    if (res.ok) loadImages()
+    if (res.ok) {
+      loadImages()
+    } else if (res.status === 401) {
+      handleUnauthorized()
+    } else {
+      const err = await parseError(res, 'Erro ao remover imagem')
+      alert(err)
+    }
   }
 
   // Delete carrossel image
@@ -217,7 +244,14 @@ document.addEventListener('DOMContentLoaded', () => {
       method: 'DELETE',
       credentials: 'include'
     })
-    if (res.ok) loadImages()
+    if (res.ok) {
+      loadImages()
+    } else if (res.status === 401) {
+      handleUnauthorized()
+    } else {
+      const err = await parseError(res, 'Erro ao remover imagem')
+      alert(err)
+    }
   }
 
   // --- Site Images ---
@@ -230,6 +264,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadSiteImages() {
     const res = await fetch(apiUrl('/api/images'), { credentials: 'include' })
+    if (res.status === 401) return handleUnauthorized()
+    if (!res.ok) return
     const data = await res.json()
     renderSiteImages(data.siteImages || {})
   }
@@ -270,9 +306,11 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         if (res.ok) {
           loadSiteImages()
+        } else if (res.status === 401) {
+          handleUnauthorized()
         } else {
-          const err = await res.json().catch(() => ({}))
-          alert(err.error || 'Erro ao enviar imagem')
+          const err = await parseError(res, 'Erro ao enviar imagem')
+          alert(err)
         }
         e.target.value = ''
       })
@@ -285,12 +323,21 @@ document.addEventListener('DOMContentLoaded', () => {
       method: 'DELETE',
       credentials: 'include'
     })
-    if (res.ok) loadSiteImages()
+    if (res.ok) {
+      loadSiteImages()
+    } else if (res.status === 401) {
+      handleUnauthorized()
+    } else {
+      const err = await parseError(res, 'Erro ao restaurar imagem')
+      alert(err)
+    }
   }
 
   // --- Video ---
   async function loadVideo() {
     const res = await fetch(apiUrl('/api/images'), { credentials: 'include' })
+    if (res.status === 401) return handleUnauthorized()
+    if (!res.ok) return
     const data = await res.json()
     renderVideo(data.video)
   }
@@ -315,9 +362,11 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     if (res.ok) {
       loadVideo()
+    } else if (res.status === 401) {
+      handleUnauthorized()
     } else {
-      const err = await res.json().catch(() => ({}))
-      alert(err.error || 'Erro ao enviar vídeo')
+      const err = await parseError(res, 'Erro ao enviar vídeo')
+      alert(err)
     }
     e.target.value = ''
   })
