@@ -103,9 +103,18 @@ function setVisible(selector, isVisible) {
 const galleryGrid = document.querySelector('.galeria-grid')
 const initialGalleryGridMarkup = galleryGrid ? galleryGrid.innerHTML : ''
 
+function normalizeImageSource(entry) {
+ if (!entry) return ''
+ if (typeof entry === 'string') return entry
+ if (typeof entry === 'object') return entry.src || entry.url || ''
+ return ''
+}
+
 function renderGalleryGrid(images) {
  const gridItems = Array.isArray(images)
-  ? images.filter(img => img && img.src)
+  ? images
+   .map(normalizeImageSource)
+   .filter(Boolean)
   : []
 
  if (!galleryGrid) return
@@ -116,8 +125,8 @@ function renderGalleryGrid(images) {
   return
  }
 
- galleryGrid.innerHTML = gridItems.map((img, i) =>
-  withViewOverlay(assetUrl(img.src), `Grid ${i + 1}`)
+ galleryGrid.innerHTML = gridItems.map((src, i) =>
+  withViewOverlay(assetUrl(src), `Grid ${i + 1}`)
  ).join('')
  setVisible('.galeria-grid', true)
 }
@@ -151,12 +160,19 @@ function loadDynamicImages() {
    // Carrossel
    if (data.carrossel && data.carrossel.length > 0) {
     const wrapper = document.querySelector('.galeria-carousel .swiper-wrapper')
+    const carouselItems = data.carrossel
+     .map(normalizeImageSource)
+     .filter(Boolean)
     if (wrapper) {
-     wrapper.innerHTML = data.carrossel.map((img, i) =>
-      `<div class="galeria-slide swiper-slide"><img src="${assetUrl(img.src)}" alt="Imagem ${i + 1}"></div>`
+     wrapper.innerHTML = carouselItems.map((src, i) =>
+      `<div class="galeria-slide swiper-slide"><img src="${assetUrl(src)}" alt="Imagem ${i + 1}"></div>`
      ).join('')
-     swiper.update()
-     setVisible('.galeria-carousel', true)
+     if (carouselItems.length > 0) {
+      swiper.update()
+      setVisible('.galeria-carousel', true)
+     } else {
+      setVisible('.galeria-carousel', false)
+     }
     }
    } else {
     setVisible('.galeria-carousel', false)
