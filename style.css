@@ -138,12 +138,12 @@ body {
 
 /*============= LOGO ============*/
 .logo {
-  font: 700 1.31rem var(--title-font), sans-serif;
+  font: 700 1.48rem var(--title-font), sans-serif;
   color: var(--title-color);
 }
 
 .logo span {
-  color: var(--base-color);
+  color: var(--title-color);
 }
 
 .logo-alt span {
