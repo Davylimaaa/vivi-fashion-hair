@@ -737,9 +737,10 @@ footer .social a:hover {
 .antes img,
 .depois img {
   width: min(100%, 250px);
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 3 / 4;
   border-radius: 0.25rem;
   object-fit: cover;
+  object-position: top center;
 }
 
 .antes p,
@@ -937,7 +938,7 @@ footer .social a:hover {
 
   .antes img,
   .depois img {
-    width: min(100%, 200px);
+    width: min(100%, 180px);
   }
 
   .testimonial-center blockquote {
