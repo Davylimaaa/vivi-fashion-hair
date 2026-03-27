@@ -107,6 +107,30 @@ function loadDynamicImages() {
      }
     }
    }
+   // Site images (capa, sobrenos, antes, depois)
+   if (data.siteImages) {
+    const siteMap = {
+     capa:     '#home .image img',
+     sobrenos: '#about .image img',
+     antes:    '#testimonials .antes img',
+     depois:   '#testimonials .depois img'
+    }
+    for (const [name, selector] of Object.entries(siteMap)) {
+     if (data.siteImages[name] && data.siteImages[name].src) {
+      const el = document.querySelector(selector)
+      if (el) el.src = assetUrl(data.siteImages[name].src)
+     }
+    }
+   }
+   // Video
+   if (data.video && data.video.src) {
+    const videoSource = document.querySelector('.video-bg video source')
+    const videoEl = document.querySelector('.video-bg video')
+    if (videoSource && videoEl) {
+     videoSource.src = assetUrl(data.video.src)
+     videoEl.load()
+    }
+   }
   })
   .catch(() => {}) // Fallback: keep static images if server is not running
 }

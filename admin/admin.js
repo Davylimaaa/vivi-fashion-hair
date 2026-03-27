@@ -60,6 +60,8 @@ document.addEventListener('DOMContentLoaded', () => {
     adminPanel.classList.remove('hidden')
     loadDashboard()
     loadImages()
+    loadSiteImages()
+    loadVideo()
     loadEstoque()
   }
 
@@ -217,6 +219,108 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     if (res.ok) loadImages()
   }
+
+  // --- Site Images ---
+  const SITE_IMAGE_LABELS = {
+    capa:     'Foto Capa (Início)',
+    sobrenos: 'Foto Sobre Nós',
+    antes:    'Foto Antes (Depoimentos)',
+    depois:   'Foto Depois (Depoimentos)'
+  }
+
+  async function loadSiteImages() {
+    const res = await fetch(apiUrl('/api/images'), { credentials: 'include' })
+    const data = await res.json()
+    renderSiteImages(data.siteImages || {})
+  }
+
+  function renderSiteImages(siteImages) {
+    const container = document.getElementById('site-images-grid')
+    const names = ['capa', 'sobrenos', 'antes', 'depois']
+    container.innerHTML = names.map(name => {
+      const img = siteImages[name]
+      const src = img ? img.src : ''
+      return `
+        <div class="site-img-item">
+          <div class="site-img-label">${SITE_IMAGE_LABELS[name]}</div>
+          <div class="site-img-preview">
+            ${src ? `<img src="${assetUrl(src)}" alt="${SITE_IMAGE_LABELS[name]}">` : '<span class="empty-state">Sem imagem</span>'}
+          </div>
+          <div class="site-img-actions">
+            <label class="upload-btn" style="font-size:0.8rem;padding:0.5rem 1rem">
+              <span>↻ Trocar</span>
+              <input type="file" accept="image/jpeg,image/png,image/webp" hidden data-name="${name}" class="input-site-image">
+            </label>
+            <button class="btn-secondary" style="font-size:0.8rem" onclick="resetSiteImage('${name}')">Restaurar original</button>
+          </div>
+        </div>`
+    }).join('')
+
+    container.querySelectorAll('.input-site-image').forEach(input => {
+      input.addEventListener('change', async (e) => {
+        const file = e.target.files[0]
+        if (!file) return
+        const name = e.target.dataset.name
+        const formData = new FormData()
+        formData.append('image', file)
+        const res = await fetch(apiUrl(`/api/images/site/${name}`), {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        })
+        if (res.ok) {
+          loadSiteImages()
+        } else {
+          const err = await res.json().catch(() => ({}))
+          alert(err.error || 'Erro ao enviar imagem')
+        }
+        e.target.value = ''
+      })
+    })
+  }
+
+  window.resetSiteImage = async (name) => {
+    if (!confirm('Restaurar a foto original?')) return
+    const res = await fetch(apiUrl(`/api/images/site/${name}`), {
+      method: 'DELETE',
+      credentials: 'include'
+    })
+    if (res.ok) loadSiteImages()
+  }
+
+  // --- Video ---
+  async function loadVideo() {
+    const res = await fetch(apiUrl('/api/images'), { credentials: 'include' })
+    const data = await res.json()
+    renderVideo(data.video)
+  }
+
+  function renderVideo(video) {
+    const container = document.getElementById('video-preview')
+    const src = video && video.src ? assetUrl(video.src) : ''
+    container.innerHTML = src
+      ? `<video src="${src}" controls muted style="width:100%;max-width:600px;border-radius:0.5rem;"></video>`
+      : '<p class="empty-state">Nenhum vídeo carregado</p>'
+  }
+
+  document.getElementById('input-video').addEventListener('change', async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const formData = new FormData()
+    formData.append('video', file)
+    const res = await fetch(apiUrl('/api/video'), {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    })
+    if (res.ok) {
+      loadVideo()
+    } else {
+      const err = await res.json().catch(() => ({}))
+      alert(err.error || 'Erro ao enviar vídeo')
+    }
+    e.target.value = ''
+  })
 
   // --- Estoque ---
   const formEstoque = document.getElementById('form-estoque')

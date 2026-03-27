@@ -19,14 +19,67 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'vivis2026'
 // --- Data file ---
 const DATA_FILE = path.join(__dirname, 'data', 'data.json')
 
+const SITE_IMAGE_DEFAULTS = {
+  capa: 'images/capa.png',
+  sobrenos: 'images/sobrenos.png',
+  antes: 'images/antes.jpeg',
+  depois: 'images/depois.jpeg'
+}
+const VIDEO_DEFAULT = 'assets/videos/espaço.mp4'
+
 function loadData() {
   try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'))
+    const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'))
+    // Migrate: add missing fields on existing data.json
+    let changed = false
+    if (!data.siteImages) {
+      data.siteImages = {
+        capa:     { src: SITE_IMAGE_DEFAULTS.capa },
+        sobrenos: { src: SITE_IMAGE_DEFAULTS.sobrenos },
+        antes:    { src: SITE_IMAGE_DEFAULTS.antes },
+        depois:   { src: SITE_IMAGE_DEFAULTS.depois }
+      }
+      changed = true
+    }
+    if (!data.video) {
+      data.video = { src: VIDEO_DEFAULT }
+      changed = true
+    }
+    if (changed) saveData(data)
+    return data
   } catch {
     const defaultData = {
       clicks: 0,
-      carrossel: [],
-      grid: [],
+      carrossel: [
+        { filename: 'carrossel1.jpeg', src: 'images/carrossel1.jpeg' },
+        { filename: 'carrossel2.jpeg', src: 'images/carrossel2.jpeg' },
+        { filename: 'carrossel3.jpeg', src: 'images/carrossel3.jpeg' }
+      ],
+      grid: [
+        { filename: 'galeria5.jpeg',  src: 'images/galeria5.jpeg' },
+        { filename: 'galeria6.jpeg',  src: 'images/galeria6.jpeg' },
+        { filename: 'galeria7.jpeg',  src: 'images/galeria7.jpeg' },
+        { filename: 'galeria8.jpeg',  src: 'images/galeria8.jpeg' },
+        { filename: 'galeria9.jpeg',  src: 'images/galeria9.jpeg' },
+        { filename: 'galeria10.jpeg', src: 'images/galeria10.jpeg' },
+        { filename: 'galeria11.jpeg', src: 'images/galeria11.jpeg' },
+        { filename: 'galeria12.jpeg', src: 'images/galeria12.jpeg' },
+        { filename: 'galeria13.jpeg', src: 'images/galeria13.jpeg' },
+        { filename: 'galeria14.jpeg', src: 'images/galeria14.jpeg' },
+        { filename: 'galeria15.jpeg', src: 'images/galeria15.jpeg' },
+        { filename: 'galeria16.jpeg', src: 'images/galeria16.jpeg' },
+        { filename: 'galeria17.jpeg', src: 'images/galeria17.jpeg' },
+        { filename: 'galeria18.jpeg', src: 'images/galeria18.jpeg' },
+        { filename: 'galeria19.jpeg', src: 'images/galeria19.jpeg' },
+        { filename: 'galeria20.jpeg', src: 'images/galeria20.jpeg' }
+      ],
+      siteImages: {
+        capa:     { filename: 'capa.png',     src: 'images/capa.png' },
+        sobrenos: { filename: 'sobrenos.png', src: 'images/sobrenos.png' },
+        antes:    { filename: 'antes.jpeg',   src: 'images/antes.jpeg' },
+        depois:   { filename: 'depois.jpeg',  src: 'images/depois.jpeg' }
+      },
+      video: { src: VIDEO_DEFAULT },
       estoque: []
     }
     saveData(defaultData)
@@ -173,7 +226,12 @@ app.post('/api/clicks/reset', requireAuth, (req, res) => {
 // Get current images
 app.get('/api/images', (req, res) => {
   const data = loadData()
-  res.json({ carrossel: data.carrossel || [], grid: data.grid || [] })
+  res.json({
+    carrossel: data.carrossel || [],
+    grid: data.grid || [],
+    siteImages: data.siteImages || {},
+    video: data.video || { src: VIDEO_DEFAULT }
+  })
 })
 
 // Upload carousel image
@@ -225,6 +283,41 @@ app.delete('/api/images/carrossel/:index', requireAuth, (req, res) => {
   res.json({ success: true, images: data.carrossel })
 })
 
+// Upload site image (capa, sobrenos, antes, depois)
+const ALLOWED_SITE_NAMES = Object.keys(SITE_IMAGE_DEFAULTS)
+
+app.post('/api/images/site/:name', requireAuth, upload.single('image'), (req, res) => {
+  const name = req.params.name
+  if (!ALLOWED_SITE_NAMES.includes(name)) return res.status(400).json({ error: 'Nome inválido' })
+  if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' })
+  const data = loadData()
+  if (!data.siteImages) data.siteImages = {}
+  const old = data.siteImages[name]
+  if (old && old.filename && old.filename.startsWith('upload-')) {
+    const oldPath = path.join(__dirname, 'images', old.filename)
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+  }
+  data.siteImages[name] = { filename: req.file.filename, src: `images/${req.file.filename}` }
+  saveData(data)
+  res.json({ success: true, siteImages: data.siteImages })
+})
+
+// Reset site image to default
+app.delete('/api/images/site/:name', requireAuth, (req, res) => {
+  const name = req.params.name
+  if (!ALLOWED_SITE_NAMES.includes(name)) return res.status(400).json({ error: 'Nome inválido' })
+  const data = loadData()
+  if (!data.siteImages) data.siteImages = {}
+  const old = data.siteImages[name]
+  if (old && old.filename && old.filename.startsWith('upload-')) {
+    const oldPath = path.join(__dirname, 'images', old.filename)
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+  }
+  data.siteImages[name] = { src: SITE_IMAGE_DEFAULTS[name] }
+  saveData(data)
+  res.json({ success: true, siteImages: data.siteImages })
+})
+
 // Delete grid image at position
 app.delete('/api/images/grid/:index', requireAuth, (req, res) => {
   const data = loadData()
@@ -240,6 +333,55 @@ app.delete('/api/images/grid/:index', requireAuth, (req, res) => {
   data.grid[index] = null
   saveData(data)
   res.json({ success: true, images: data.grid })
+})
+
+// --- Video management ---
+const videoStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, 'images')),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase()
+    cb(null, `video-${Date.now()}${ext}`)
+  }
+})
+
+const videoUpload = multer({
+  storage: videoStorage,
+  limits: { fileSize: 200 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase()
+    const allowedVideoExts = ['.mp4', '.webm', '.mov']
+    const allowedVideoMimes = ['video/mp4', 'video/webm', 'video/quicktime']
+    if (allowedVideoExts.includes(ext) && allowedVideoMimes.includes(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error('Apenas vídeos MP4, WebM ou MOV são permitidos.'))
+    }
+  }
+})
+
+app.post('/api/video', requireAuth, videoUpload.single('video'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' })
+  const data = loadData()
+  const old = data.video
+  if (old && old.filename && old.filename.startsWith('video-')) {
+    const oldPath = path.join(__dirname, 'images', old.filename)
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+  }
+  data.video = { filename: req.file.filename, src: `images/${req.file.filename}` }
+  saveData(data)
+  res.json({ success: true, video: data.video })
+})
+
+app.delete('/api/video', requireAuth, (req, res) => {
+  const data = loadData()
+  const old = data.video
+  if (old && old.filename && old.filename.startsWith('video-')) {
+    const oldPath = path.join(__dirname, 'images', old.filename)
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+  }
+  data.video = { src: VIDEO_DEFAULT }
+  saveData(data)
+  res.json({ success: true, video: data.video })
 })
 
 // --- Inventory management ---
