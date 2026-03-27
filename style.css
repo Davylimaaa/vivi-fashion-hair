@@ -741,6 +741,94 @@ footer .social a:hover {
   border-radius: 0.25rem;
   object-fit: cover;
   object-position: top center;
+  display: block;
+}
+
+/* IMG ZOOM WRAP */
+.img-zoom-wrap {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.img-ver-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0);
+  transition: background 0.3s;
+}
+
+.img-zoom-wrap:hover .img-ver-overlay {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.img-ver-overlay span {
+  color: white;
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border: 2px solid white;
+  padding: 0.35rem 1.1rem;
+  border-radius: 2rem;
+  background: transparent;
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.img-zoom-wrap:hover .img-ver-overlay span {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* LIGHTBOX */
+.lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.88);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+  padding: 1rem;
+}
+
+.lightbox.open {
+  display: flex;
+}
+
+.lightbox img {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 0.5rem;
+  object-fit: contain;
+  cursor: default;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1.5rem;
+  background: none;
+  border: none;
+  color: white;
+  font-size: 2.5rem;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.lightbox-close:hover {
+  opacity: 1;
 }
 
 .antes p,

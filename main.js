@@ -208,3 +208,40 @@ window.addEventListener('scroll', function () {
  backToHome()
  activateMenuAtCurrentSection()
 })
+
+/*
+  Lightbox
+*/
+const lightbox = document.getElementById('lightbox')
+const lightboxImg = document.getElementById('lightbox-img')
+
+function openLightbox(src) {
+ lightboxImg.src = src
+ lightbox.classList.add('open')
+ document.body.style.overflow = 'hidden'
+}
+
+function closeLightbox() {
+ lightbox.classList.remove('open')
+ lightboxImg.src = ''
+ document.body.style.overflow = ''
+}
+
+document.getElementById('lightbox-close').addEventListener('click', (e) => {
+ e.stopPropagation()
+ closeLightbox()
+})
+
+lightbox.addEventListener('click', closeLightbox)
+lightboxImg.addEventListener('click', (e) => e.stopPropagation())
+
+document.addEventListener('keydown', (e) => {
+ if (e.key === 'Escape') closeLightbox()
+})
+
+document.querySelectorAll('.img-zoom-wrap').forEach(wrap => {
+ wrap.addEventListener('click', () => {
+  const img = wrap.querySelector('img')
+  if (img) openLightbox(img.src)
+ })
+})

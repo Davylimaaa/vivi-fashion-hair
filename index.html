@@ -227,11 +227,17 @@
         </p>
         <div class="antes-depois">
          <div class="antes">
-          <img src="images/antes.jpeg" alt="Antes">
+          <div class="img-zoom-wrap">
+           <img src="images/antes.jpeg" alt="Antes">
+           <div class="img-ver-overlay"><span>Ver</span></div>
+          </div>
           <p>Antes</p>
          </div>
          <div class="depois">
-          <img src="images/depois.jpeg" alt="Depois">
+          <div class="img-zoom-wrap">
+           <img src="images/depois.jpeg" alt="Depois">
+           <div class="img-ver-overlay"><span>Ver</span></div>
+          </div>
           <p>Depois</p>
          </div>
         </div>
@@ -288,6 +294,12 @@
 
   <!-- back to home button -->
   <a href="#home" class="back-to-home"><i class="icon-arrow-up"></i></a>
+
+  <!-- LIGHTBOX -->
+  <div id="lightbox" class="lightbox" role="dialog" aria-modal="true">
+   <button class="lightbox-close" id="lightbox-close" aria-label="Fechar">&times;</button>
+   <img id="lightbox-img" src="" alt="Imagem ampliada">
+  </div>
 
   <!-- Swiper -->
   <script src="https://unpkg.com/swiper@7/swiper-bundle.min.js"></script>
