@@ -66,6 +66,34 @@ function assetUrl(src) {
  return API_BASE_URL ? `${API_BASE_URL}/${cleanSrc}` : `/${cleanSrc}`
 }
 
+function normalizeImageStyle(style) {
+ const src = style && typeof style === 'object' ? style : {}
+ const fit = src.fit === 'contain' ? 'contain' : 'cover'
+ const zoom = Number.isFinite(Number(src.zoom)) ? Number(src.zoom) : 100
+ const posX = Number.isFinite(Number(src.posX)) ? Number(src.posX) : 50
+ const posY = Number.isFinite(Number(src.posY)) ? Number(src.posY) : 50
+ return {
+  fit,
+  zoom: Math.max(50, Math.min(200, zoom)),
+  posX: Math.max(0, Math.min(100, posX)),
+  posY: Math.max(0, Math.min(100, posY))
+ }
+}
+
+function imageStyleAttr(style) {
+ const s = normalizeImageStyle(style)
+ return `object-fit:${s.fit};object-position:${s.posX}% ${s.posY}%;transform:scale(${s.zoom / 100});transform-origin:${s.posX}% ${s.posY}%;`
+}
+
+function applyImageEntry(el, entry) {
+ if (!el) return
+ const style = normalizeImageStyle(entry && entry.style)
+ el.style.objectFit = style.fit
+ el.style.objectPosition = `${style.posX}% ${style.posY}%`
+ el.style.transform = `scale(${style.zoom / 100})`
+ el.style.transformOrigin = `${style.posX}% ${style.posY}%`
+}
+
 function withViewOverlay(imgSrc, altText) {
  return `
   <div class="img-zoom-wrap">
@@ -103,17 +131,17 @@ function setVisible(selector, isVisible) {
 const galleryGrid = document.querySelector('.galeria-grid')
 const initialGalleryGridMarkup = galleryGrid ? galleryGrid.innerHTML : ''
 
-function normalizeImageSource(entry) {
- if (!entry) return ''
- if (typeof entry === 'string') return entry
- if (typeof entry === 'object') return entry.src || entry.url || ''
- return ''
+function normalizeImageEntry(entry) {
+ if (!entry) return null
+ if (typeof entry === 'string') return { src: entry, style: null }
+ if (typeof entry === 'object' && entry.src) return entry
+ return null
 }
 
 function renderGalleryGrid(images) {
  const gridItems = Array.isArray(images)
   ? images
-   .map(normalizeImageSource)
+   .map(normalizeImageEntry)
    .filter(Boolean)
   : []
 
@@ -121,21 +149,69 @@ function renderGalleryGrid(images) {
 
  if (gridItems.length === 0) {
   galleryGrid.innerHTML = ''
-  setVisible('.galeria-grid', false)
+  galleryGrid.style.display = 'none'
   return
  }
 
- galleryGrid.innerHTML = gridItems.map((src, i) =>
-  withViewOverlay(assetUrl(src), `Grid ${i + 1}`)
+ galleryGrid.innerHTML = gridItems.map((entry, i) =>
+  withViewOverlay(assetUrl(entry.src), `Grid ${i + 1}`)
  ).join('')
- setVisible('.galeria-grid', true)
+ galleryGrid.style.display = 'grid'
+ galleryGrid.style.visibility = ''
+ galleryGrid.style.opacity = ''
+ galleryGrid.style.transform = ''
+
+ galleryGrid.querySelectorAll('.img-zoom-wrap img').forEach((img, i) => {
+  applyImageEntry(img, gridItems[i])
+ })
 }
 
 function restoreStaticGalleryGrid() {
  if (!galleryGrid || !initialGalleryGridMarkup.trim()) return
  galleryGrid.innerHTML = initialGalleryGridMarkup
- setVisible('.galeria-grid', true)
+ galleryGrid.style.display = 'grid'
+ galleryGrid.style.visibility = ''
+ galleryGrid.style.opacity = ''
+ galleryGrid.style.transform = ''
  enhanceGalleryGridWithViewButtons()
+}
+
+function renderKidsSection(kids) {
+ const section = document.getElementById('kids')
+ const grid = document.getElementById('kids-grid')
+ const boomerangWrap = document.getElementById('kids-boomerang')
+ const boomerangSource = document.querySelector('#kids-boomerang video source')
+ const boomerangVideo = document.querySelector('#kids-boomerang video')
+
+ if (!section || !grid || !boomerangWrap || !boomerangSource || !boomerangVideo) return
+
+ const photos = Array.isArray(kids && kids.photos)
+  ? kids.photos.map(normalizeImageEntry).filter(Boolean)
+  : []
+ const boomerang = normalizeImageEntry(kids && kids.boomerang)
+ const hasContent = photos.length > 0 || !!boomerang
+
+ setVisible('#kids', hasContent)
+ if (!hasContent) {
+  grid.innerHTML = ''
+  boomerangWrap.style.display = 'none'
+  return
+ }
+
+ grid.innerHTML = photos.map((entry, i) => `
+  <div class="kids-card img-zoom-wrap">
+   <img src="${assetUrl(entry.src)}" alt="Atendimento Kids ${i + 1}" style="${imageStyleAttr(entry.style)}">
+   <div class="img-ver-overlay"><span>Ver</span></div>
+  </div>
+ `).join('')
+
+ if (boomerang && boomerang.src) {
+  boomerangSource.src = assetUrl(boomerang.src)
+  boomerangVideo.load()
+  boomerangWrap.style.display = ''
+ } else {
+  boomerangWrap.style.display = 'none'
+ }
 }
 
 /*
@@ -161,11 +237,11 @@ function loadDynamicImages() {
    if (data.carrossel && data.carrossel.length > 0) {
     const wrapper = document.querySelector('.galeria-carousel .swiper-wrapper')
     const carouselItems = data.carrossel
-     .map(normalizeImageSource)
+    .map(normalizeImageEntry)
      .filter(Boolean)
     if (wrapper) {
-     wrapper.innerHTML = carouselItems.map((src, i) =>
-      `<div class="galeria-slide swiper-slide"><img src="${assetUrl(src)}" alt="Imagem ${i + 1}"></div>`
+    wrapper.innerHTML = carouselItems.map((entry, i) =>
+    `<div class="galeria-slide swiper-slide"><img src="${assetUrl(entry.src)}" alt="Imagem ${i + 1}" style="${imageStyleAttr(entry.style)}"></div>`
      ).join('')
      if (carouselItems.length > 0) {
       swiper.update()
@@ -192,7 +268,10 @@ function loadDynamicImages() {
      setVisible(refs.block, hasImage)
      if (hasImage) {
       const el = document.querySelector(refs.img)
-      if (el) el.src = assetUrl(data.siteImages[name].src)
+        if (el) {
+         el.src = assetUrl(data.siteImages[name].src)
+         applyImageEntry(el, data.siteImages[name])
+        }
      }
     }
 
@@ -200,6 +279,9 @@ function loadDynamicImages() {
     const hasAfter = !!(data.siteImages.depois && data.siteImages.depois.src)
     setVisible('#testimonials', hasBefore && hasAfter)
    }
+
+    renderKidsSection(data.kids)
+
    // Video
    if (data.video && data.video.src) {
     const videoSource = document.querySelector('.video-bg video source')
@@ -236,7 +318,7 @@ scrollReveal.reveal(
  `#home .image, #home .text, 
    #about .image, #about .text,
    #services .header, #services .card,
-   #galeria .galeria-carousel, #galeria .galeria-grid, #galeria .video-bg,
+   #galeria .galeria-carousel, #galeria .video-bg,
    #testimonials header, #testimonials .testimonials,
    #contact .links,
    footer .brand, footer .social

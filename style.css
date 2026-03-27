@@ -924,6 +924,49 @@ footer .social a:hover {
   text-align: center;
 }
 
+/*============= KIDS ============*/
+#kids {
+  background: white;
+}
+
+#kids .subtitle {
+  max-width: 560px;
+}
+
+.kids-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.kids-card {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3/4;
+}
+
+.kids-card img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 0.25rem;
+  object-fit: cover;
+}
+
+.kids-boomerang {
+  border-radius: 0.35rem;
+  overflow: hidden;
+  background: #111;
+}
+
+.kids-boomerang video {
+  width: 100%;
+  max-height: 540px;
+  display: block;
+  object-fit: cover;
+}
+
 /*
   Para dispositivos com resolução < 992px (tablet)
 */
@@ -936,6 +979,10 @@ footer .social a:hover {
 
   /* galeria */
   .grid-4x4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .kids-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -990,6 +1037,11 @@ footer .social a:hover {
 
   /* galeria */
   .grid-4x4 {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .kids-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 0.5rem;
   }

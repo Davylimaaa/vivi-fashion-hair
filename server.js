@@ -41,15 +41,34 @@ const CARROSSEL_DEFAULTS = [
 ]
 const GRID_DEFAULTS = Array.from({ length: 16 }, (_, i) => `images/galeria${i + 5}.jpeg`)
 
+function normalizeImageStyle(style) {
+  const src = style && typeof style === 'object' ? style : {}
+  const fit = src.fit === 'contain' ? 'contain' : 'cover'
+  const zoom = Number.isFinite(Number(src.zoom)) ? Number(src.zoom) : 100
+  const posX = Number.isFinite(Number(src.posX)) ? Number(src.posX) : 50
+  const posY = Number.isFinite(Number(src.posY)) ? Number(src.posY) : 50
+  return {
+    fit,
+    zoom: Math.max(50, Math.min(200, zoom)),
+    posX: Math.max(0, Math.min(100, posX)),
+    posY: Math.max(0, Math.min(100, posY))
+  }
+}
+
 function normalizeImageEntry(entry) {
   if (!entry) return null
   if (typeof entry === 'string') {
-    return { filename: path.basename(entry), src: entry }
+    return {
+      filename: path.basename(entry),
+      src: entry,
+      style: normalizeImageStyle()
+    }
   }
   if (typeof entry === 'object' && entry.src) {
     return {
       filename: entry.filename || path.basename(entry.src),
-      src: entry.src
+      src: entry.src,
+      style: normalizeImageStyle(entry.style)
     }
   }
   return null
@@ -88,6 +107,17 @@ function normalizeData(rawData = {}) {
     data.video = { src: VIDEO_DEFAULT }
   }
 
+  if (!data.kids || typeof data.kids !== 'object') data.kids = {}
+  if (!Array.isArray(data.kids.photos)) {
+    data.kids.photos = Array.from({ length: 4 }, () => null)
+  } else {
+    data.kids.photos = data.kids.photos
+      .map(item => (item === null ? null : normalizeImageEntry(item)))
+      .slice(0, 4)
+    while (data.kids.photos.length < 4) data.kids.photos.push(null)
+  }
+  data.kids.boomerang = normalizeImageEntry(data.kids.boomerang)
+
   if (!Array.isArray(data.estoque)) data.estoque = []
 
   return data
@@ -111,6 +141,10 @@ function loadData() {
         depois: SITE_IMAGE_DEFAULTS.depois
       },
       video: { src: VIDEO_DEFAULT },
+      kids: {
+        photos: [null, null, null, null],
+        boomerang: null
+      },
       estoque: []
     })
     saveData(defaultData)
@@ -265,7 +299,8 @@ app.get('/api/images', (req, res) => {
     carrossel: data.carrossel || [],
     grid: data.grid || [],
     siteImages: data.siteImages || {},
-    video: data.video || { src: VIDEO_DEFAULT }
+    video: data.video || { src: VIDEO_DEFAULT },
+    kids: data.kids || { photos: [null, null, null, null], boomerang: null }
   })
 })
 
@@ -299,6 +334,34 @@ app.post('/api/images/grid', requireAuth, upload.single('image'), (req, res) => 
   data.grid[pos] = { filename: req.file.filename, src: `images/${req.file.filename}` }
   saveData(data)
   res.json({ success: true, images: data.grid })
+})
+
+// Upload kids photo at position
+app.post('/api/images/kids/photo', requireAuth, upload.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' })
+  const data = loadData()
+  if (!data.kids || typeof data.kids !== 'object') data.kids = {}
+  if (!Array.isArray(data.kids.photos)) data.kids.photos = [null, null, null, null]
+
+  const pos = parseInt(req.body.position)
+  if (isNaN(pos) || pos < 0 || pos > 3) {
+    return res.status(400).json({ error: 'Posição inválida (0-3)' })
+  }
+
+  while (data.kids.photos.length < 4) data.kids.photos.push(null)
+  const old = data.kids.photos[pos]
+  if (old && old.filename && old.filename.startsWith('upload-')) {
+    const oldPath = path.join(UPLOADS_DIR, old.filename)
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+  }
+
+  data.kids.photos[pos] = {
+    filename: req.file.filename,
+    src: `images/${req.file.filename}`,
+    style: normalizeImageStyle()
+  }
+  saveData(data)
+  res.json({ success: true, kids: data.kids })
 })
 
 // Delete carousel image
@@ -370,6 +433,90 @@ app.delete('/api/images/grid/:index', requireAuth, (req, res) => {
   res.json({ success: true, images: data.grid })
 })
 
+// Delete kids photo at position
+app.delete('/api/images/kids/photo/:index', requireAuth, (req, res) => {
+  const data = loadData()
+  const index = parseInt(req.params.index)
+  if (isNaN(index) || index < 0 || index >= 4 || !data.kids || !data.kids.photos || !data.kids.photos[index]) {
+    return res.status(400).json({ error: 'Posição inválida ou vazia' })
+  }
+
+  const removed = data.kids.photos[index]
+  const filePath = path.join(UPLOADS_DIR, removed.filename || '')
+  if (removed.filename && removed.filename.startsWith('upload-') && fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath)
+  }
+  data.kids.photos[index] = null
+  saveData(data)
+  res.json({ success: true, kids: data.kids })
+})
+
+app.delete('/api/images/kids/boomerang', requireAuth, (req, res) => {
+  const data = loadData()
+  const old = data.kids && data.kids.boomerang
+  if (old && old.filename && old.filename.startsWith('video-')) {
+    const oldPath = path.join(UPLOADS_DIR, old.filename)
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+  }
+  if (!data.kids || typeof data.kids !== 'object') data.kids = {}
+  data.kids.boomerang = null
+  saveData(data)
+  res.json({ success: true, kids: data.kids })
+})
+
+function updateEntryStyle(entry, stylePatch) {
+  if (!entry || typeof entry !== 'object' || !entry.src) return null
+  entry.style = normalizeImageStyle(stylePatch)
+  return entry.style
+}
+
+app.put('/api/images/style/carrossel/:index', requireAuth, (req, res) => {
+  const data = loadData()
+  const index = parseInt(req.params.index)
+  if (isNaN(index) || index < 0 || index >= (data.carrossel || []).length) {
+    return res.status(400).json({ error: 'Índice inválido' })
+  }
+  const style = updateEntryStyle(data.carrossel[index], req.body)
+  if (!style) return res.status(400).json({ error: 'Imagem inválida' })
+  saveData(data)
+  res.json({ success: true, style })
+})
+
+app.put('/api/images/style/grid/:index', requireAuth, (req, res) => {
+  const data = loadData()
+  const index = parseInt(req.params.index)
+  if (isNaN(index) || index < 0 || index >= 16 || !data.grid || !data.grid[index]) {
+    return res.status(400).json({ error: 'Posição inválida' })
+  }
+  const style = updateEntryStyle(data.grid[index], req.body)
+  if (!style) return res.status(400).json({ error: 'Imagem inválida' })
+  saveData(data)
+  res.json({ success: true, style })
+})
+
+app.put('/api/images/style/site/:name', requireAuth, (req, res) => {
+  const name = req.params.name
+  if (!ALLOWED_SITE_NAMES.includes(name)) return res.status(400).json({ error: 'Nome inválido' })
+  const data = loadData()
+  if (!data.siteImages || !data.siteImages[name]) return res.status(400).json({ error: 'Imagem inválida' })
+  const style = updateEntryStyle(data.siteImages[name], req.body)
+  if (!style) return res.status(400).json({ error: 'Imagem inválida' })
+  saveData(data)
+  res.json({ success: true, style })
+})
+
+app.put('/api/images/style/kids/:index', requireAuth, (req, res) => {
+  const data = loadData()
+  const index = parseInt(req.params.index)
+  if (isNaN(index) || index < 0 || index >= 4 || !data.kids || !data.kids.photos || !data.kids.photos[index]) {
+    return res.status(400).json({ error: 'Posição inválida' })
+  }
+  const style = updateEntryStyle(data.kids.photos[index], req.body)
+  if (!style) return res.status(400).json({ error: 'Imagem inválida' })
+  saveData(data)
+  res.json({ success: true, style })
+})
+
 // --- Video management ---
 const videoStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
@@ -392,6 +539,26 @@ const videoUpload = multer({
       cb(new Error('Apenas vídeos MP4, WebM ou MOV são permitidos.'))
     }
   }
+})
+
+// Upload kids boomerang (video)
+app.post('/api/images/kids/boomerang', requireAuth, videoUpload.single('video'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' })
+  const data = loadData()
+  if (!data.kids || typeof data.kids !== 'object') data.kids = {}
+
+  const old = data.kids.boomerang
+  if (old && old.filename && old.filename.startsWith('video-')) {
+    const oldPath = path.join(UPLOADS_DIR, old.filename)
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+  }
+
+  data.kids.boomerang = {
+    filename: req.file.filename,
+    src: `images/${req.file.filename}`
+  }
+  saveData(data)
+  res.json({ success: true, kids: data.kids })
 })
 
 app.post('/api/video', requireAuth, videoUpload.single('video'), (req, res) => {
