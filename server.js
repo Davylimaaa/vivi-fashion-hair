@@ -3,7 +3,9 @@ const session = require('express-session')
 const multer = require('multer')
 const path = require('path')
 const fs = require('fs')
+const https = require('https')
 const crypto = require('crypto')
+const cloudinary = require('cloudinary').v2
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -20,6 +22,20 @@ const PERSISTENT_ROOT = process.env.RENDER_DISK_PATH || process.env.STORAGE_ROOT
 const DATA_DIR = PERSISTENT_ROOT ? path.join(PERSISTENT_ROOT, 'data') : path.join(__dirname, 'data')
 const UPLOADS_DIR = PERSISTENT_ROOT ? path.join(PERSISTENT_ROOT, 'images') : path.join(__dirname, 'images')
 const BUNDLED_IMAGES_DIR = path.join(__dirname, 'images')
+
+// --- Cloudinary config ---
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true
+})
+const USE_CLOUDINARY = !!(
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_SECRET
+)
+const CLOUDINARY_DATA_PUBLIC_ID = 'vivis-salon-data/data'
 
 // --- Data file ---
 const DATA_FILE = path.join(DATA_DIR, 'data.json')
@@ -65,11 +81,17 @@ function normalizeImageEntry(entry) {
     }
   }
   if (typeof entry === 'object' && entry.src) {
-    return {
-      filename: entry.filename || path.basename(entry.src),
+    const result = {
       src: entry.src,
       style: normalizeImageStyle(entry.style)
     }
+    if (entry.public_id) {
+      result.public_id = entry.public_id
+      result.resource_type = entry.resource_type || 'image'
+    } else {
+      result.filename = entry.filename || path.basename(entry.src)
+    }
+    return result
   }
   return null
 }
@@ -123,39 +145,128 @@ function normalizeData(rawData = {}) {
   return data
 }
 
+// --- In-memory data store ---
+let _data = null
+
 function loadData() {
+  return _data
+}
+
+function saveDataLocal(data) {
   try {
-    const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'))
-    const normalized = normalizeData(data)
-    if (JSON.stringify(normalized) !== JSON.stringify(data)) saveData(normalized)
-    return normalized
-  } catch {
-    const defaultData = normalizeData({
-      clicks: 0,
-      carrossel: CARROSSEL_DEFAULTS,
-      grid: GRID_DEFAULTS,
-      siteImages: {
-        capa: SITE_IMAGE_DEFAULTS.capa,
-        sobrenos: SITE_IMAGE_DEFAULTS.sobrenos,
-        antes: SITE_IMAGE_DEFAULTS.antes,
-        depois: SITE_IMAGE_DEFAULTS.depois
-      },
-      video: { src: VIDEO_DEFAULT },
-      kids: {
-        photos: [null, null, null, null],
-        boomerang: null
-      },
-      estoque: []
-    })
-    saveData(defaultData)
-    return defaultData
+    const dir = path.dirname(DATA_FILE)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8')
+  } catch (err) {
+    console.error('Error saving local data:', err.message)
   }
 }
 
+// --- Cloudinary helpers ---
+function uploadToCloudinary(buffer, options = {}) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
+      if (error) reject(error)
+      else resolve(result)
+    })
+    stream.end(buffer)
+  })
+}
+
+function deleteFromCloudinary(publicId, resourceType = 'image') {
+  return cloudinary.uploader.destroy(publicId, { resource_type: resourceType })
+}
+
+function fetchCloudinaryRaw(publicId) {
+  return new Promise((resolve, reject) => {
+    const url = cloudinary.url(publicId, { resource_type: 'raw' }) + `?_=${Date.now()}`
+    https.get(url, (res) => {
+      if (res.statusCode === 404) {
+        res.resume()
+        reject(new Error('Not found'))
+        return
+      }
+      let body = ''
+      res.on('data', chunk => { body += chunk })
+      res.on('end', () => resolve(body))
+      res.on('error', reject)
+    }).on('error', reject)
+  })
+}
+
+function saveDataToCloudinary(data) {
+  if (!USE_CLOUDINARY) return Promise.resolve()
+  const buffer = Buffer.from(JSON.stringify(data, null, 2), 'utf8')
+  return uploadToCloudinary(buffer, {
+    public_id: CLOUDINARY_DATA_PUBLIC_ID,
+    resource_type: 'raw',
+    overwrite: true
+  })
+}
+
 function saveData(data) {
-  const dir = path.dirname(DATA_FILE)
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8')
+  _data = data
+  saveDataLocal(data)
+  if (USE_CLOUDINARY) {
+    saveDataToCloudinary(data).catch(err => console.error('Cloudinary data sync error:', err.message))
+  }
+}
+
+async function initData() {
+  // 1. Try local file first (dev or Render with disk)
+  try {
+    const raw = fs.readFileSync(DATA_FILE, 'utf8')
+    _data = normalizeData(JSON.parse(raw))
+    console.log('Data loaded from local file')
+    return
+  } catch {}
+
+  // 2. Try Cloudinary raw backup
+  if (USE_CLOUDINARY) {
+    try {
+      const jsonStr = await fetchCloudinaryRaw(CLOUDINARY_DATA_PUBLIC_ID)
+      _data = normalizeData(JSON.parse(jsonStr))
+      saveDataLocal(_data)
+      console.log('Data loaded from Cloudinary backup')
+      return
+    } catch (err) {
+      console.log('No Cloudinary data backup found, using defaults')
+    }
+  }
+
+  // 3. Use defaults
+  _data = normalizeData({})
+  saveData(_data)
+  console.log(USE_CLOUDINARY ? 'Default data saved to Cloudinary' : 'Using default data (local)')
+}
+
+async function processUploadedFile(file, resourceType = 'image') {
+  if (USE_CLOUDINARY) {
+    const result = await uploadToCloudinary(file.buffer, {
+      folder: 'vivis-salon',
+      resource_type: resourceType
+    })
+    return {
+      public_id: result.public_id,
+      resource_type: resourceType,
+      src: result.secure_url
+    }
+  }
+  return {
+    filename: file.filename,
+    src: `images/${file.filename}`
+  }
+}
+
+async function deleteEntryFile(entry) {
+  if (!entry) return
+  if (entry.public_id) {
+    await deleteFromCloudinary(entry.public_id, entry.resource_type || 'image')
+      .catch(err => console.error('Cloudinary delete error:', err.message))
+  } else if (entry.filename && (entry.filename.startsWith('upload-') || entry.filename.startsWith('video-'))) {
+    const filePath = path.join(UPLOADS_DIR, entry.filename)
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+  }
 }
 
 // --- Admin password (change this!) ---
@@ -165,20 +276,22 @@ const ADMIN_PASSWORD_HASH = crypto
   .digest('hex')
 
 // --- Multer config for image uploads ---
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase()
-    const safeName = `upload-${Date.now()}${ext}`
-    cb(null, safeName)
-  }
-})
+const imageStorageEngine = USE_CLOUDINARY
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+      filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase()
+        const safeName = `upload-${Date.now()}${ext}`
+        cb(null, safeName)
+      }
+    })
 
 const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp']
 const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp']
 
 const upload = multer({
-  storage,
+  storage: imageStorageEngine,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase()
@@ -305,163 +418,172 @@ app.get('/api/images', (req, res) => {
 })
 
 // Upload carousel image
-app.post('/api/images/carrossel', requireAuth, upload.single('image'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' })
-  const data = loadData()
-  if (!data.carrossel) data.carrossel = []
-  data.carrossel.push({ filename: req.file.filename, src: `images/${req.file.filename}` })
-  saveData(data)
-  res.json({ success: true, images: data.carrossel })
+app.post('/api/images/carrossel', requireAuth, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' })
+    const fileEntry = await processUploadedFile(req.file, 'image')
+    const data = loadData()
+    if (!data.carrossel) data.carrossel = []
+    data.carrossel.push({ ...fileEntry, style: normalizeImageStyle() })
+    saveData(data)
+    res.json({ success: true, images: data.carrossel })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao fazer upload' })
+  }
 })
 
 // Upload grid image at position
-app.post('/api/images/grid', requireAuth, upload.single('image'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' })
-  const data = loadData()
-  if (!data.grid) data.grid = []
-  const pos = parseInt(req.body.position)
-  if (isNaN(pos) || pos < 0 || pos > 15) {
-    return res.status(400).json({ error: 'Posição inválida (0-15)' })
+app.post('/api/images/grid', requireAuth, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' })
+    const data = loadData()
+    if (!data.grid) data.grid = []
+    const pos = parseInt(req.body.position)
+    if (isNaN(pos) || pos < 0 || pos > 15) {
+      return res.status(400).json({ error: 'Posição inválida (0-15)' })
+    }
+    while (data.grid.length < 16) data.grid.push(null)
+    await deleteEntryFile(data.grid[pos])
+    const fileEntry = await processUploadedFile(req.file, 'image')
+    data.grid[pos] = { ...fileEntry, style: normalizeImageStyle() }
+    saveData(data)
+    res.json({ success: true, images: data.grid })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao fazer upload' })
   }
-  // Ensure array has enough slots
-  while (data.grid.length < 16) data.grid.push(null)
-  // Remove old file if it was an upload
-  const old = data.grid[pos]
-  if (old && old.filename && old.filename.startsWith('upload-')) {
-    const oldPath = path.join(UPLOADS_DIR, old.filename)
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
-  }
-  data.grid[pos] = { filename: req.file.filename, src: `images/${req.file.filename}` }
-  saveData(data)
-  res.json({ success: true, images: data.grid })
 })
 
 // Upload kids photo at position
-app.post('/api/images/kids/photo', requireAuth, upload.single('image'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' })
-  const data = loadData()
-  if (!data.kids || typeof data.kids !== 'object') data.kids = {}
-  if (!Array.isArray(data.kids.photos)) data.kids.photos = [null, null, null, null]
+app.post('/api/images/kids/photo', requireAuth, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' })
+    const data = loadData()
+    if (!data.kids || typeof data.kids !== 'object') data.kids = {}
+    if (!Array.isArray(data.kids.photos)) data.kids.photos = [null, null, null, null]
 
-  const pos = parseInt(req.body.position)
-  if (isNaN(pos) || pos < 0 || pos > 3) {
-    return res.status(400).json({ error: 'Posição inválida (0-3)' })
-  }
+    const pos = parseInt(req.body.position)
+    if (isNaN(pos) || pos < 0 || pos > 3) {
+      return res.status(400).json({ error: 'Posição inválida (0-3)' })
+    }
 
-  while (data.kids.photos.length < 4) data.kids.photos.push(null)
-  const old = data.kids.photos[pos]
-  if (old && old.filename && old.filename.startsWith('upload-')) {
-    const oldPath = path.join(UPLOADS_DIR, old.filename)
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+    while (data.kids.photos.length < 4) data.kids.photos.push(null)
+    await deleteEntryFile(data.kids.photos[pos])
+    const fileEntry = await processUploadedFile(req.file, 'image')
+    data.kids.photos[pos] = { ...fileEntry, style: normalizeImageStyle() }
+    saveData(data)
+    res.json({ success: true, kids: data.kids })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao fazer upload' })
   }
-
-  data.kids.photos[pos] = {
-    filename: req.file.filename,
-    src: `images/${req.file.filename}`,
-    style: normalizeImageStyle()
-  }
-  saveData(data)
-  res.json({ success: true, kids: data.kids })
 })
 
 // Delete carousel image
-app.delete('/api/images/carrossel/:index', requireAuth, (req, res) => {
-  const data = loadData()
-  const index = parseInt(req.params.index)
-  if (isNaN(index) || index < 0 || index >= (data.carrossel || []).length) {
-    return res.status(400).json({ error: 'Índice inválido' })
+app.delete('/api/images/carrossel/:index', requireAuth, async (req, res) => {
+  try {
+    const data = loadData()
+    const index = parseInt(req.params.index)
+    if (isNaN(index) || index < 0 || index >= (data.carrossel || []).length) {
+      return res.status(400).json({ error: 'Índice inválido' })
+    }
+    const removed = data.carrossel.splice(index, 1)[0]
+    await deleteEntryFile(removed)
+    saveData(data)
+    res.json({ success: true, images: data.carrossel })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao deletar' })
   }
-  const removed = data.carrossel.splice(index, 1)[0]
-  // Delete file
-  const filePath = path.join(UPLOADS_DIR, removed.filename)
-  if (removed.filename.startsWith('upload-') && fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath)
-  }
-  saveData(data)
-  res.json({ success: true, images: data.carrossel })
 })
 
 // Upload site image (capa, sobrenos, antes, depois)
 const ALLOWED_SITE_NAMES = Object.keys(SITE_IMAGE_DEFAULTS)
 
-app.post('/api/images/site/:name', requireAuth, upload.single('image'), (req, res) => {
-  const name = req.params.name
-  if (!ALLOWED_SITE_NAMES.includes(name)) return res.status(400).json({ error: 'Nome inválido' })
-  if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' })
-  const data = loadData()
-  if (!data.siteImages) data.siteImages = {}
-  const old = data.siteImages[name]
-  if (old && old.filename && old.filename.startsWith('upload-')) {
-    const oldPath = path.join(UPLOADS_DIR, old.filename)
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+app.post('/api/images/site/:name', requireAuth, upload.single('image'), async (req, res) => {
+  try {
+    const name = req.params.name
+    if (!ALLOWED_SITE_NAMES.includes(name)) return res.status(400).json({ error: 'Nome inválido' })
+    if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' })
+    const data = loadData()
+    if (!data.siteImages) data.siteImages = {}
+    await deleteEntryFile(data.siteImages[name])
+    const fileEntry = await processUploadedFile(req.file, 'image')
+    data.siteImages[name] = { ...fileEntry, style: normalizeImageStyle() }
+    saveData(data)
+    res.json({ success: true, siteImages: data.siteImages })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao fazer upload' })
   }
-  data.siteImages[name] = { filename: req.file.filename, src: `images/${req.file.filename}` }
-  saveData(data)
-  res.json({ success: true, siteImages: data.siteImages })
 })
 
 // Reset site image to default
-app.delete('/api/images/site/:name', requireAuth, (req, res) => {
-  const name = req.params.name
-  if (!ALLOWED_SITE_NAMES.includes(name)) return res.status(400).json({ error: 'Nome inválido' })
-  const data = loadData()
-  if (!data.siteImages) data.siteImages = {}
-  const old = data.siteImages[name]
-  if (old && old.filename && old.filename.startsWith('upload-')) {
-    const oldPath = path.join(UPLOADS_DIR, old.filename)
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+app.delete('/api/images/site/:name', requireAuth, async (req, res) => {
+  try {
+    const name = req.params.name
+    if (!ALLOWED_SITE_NAMES.includes(name)) return res.status(400).json({ error: 'Nome inválido' })
+    const data = loadData()
+    if (!data.siteImages) data.siteImages = {}
+    await deleteEntryFile(data.siteImages[name])
+    data.siteImages[name] = { src: SITE_IMAGE_DEFAULTS[name] }
+    saveData(data)
+    res.json({ success: true, siteImages: data.siteImages })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao deletar' })
   }
-  data.siteImages[name] = { src: SITE_IMAGE_DEFAULTS[name] }
-  saveData(data)
-  res.json({ success: true, siteImages: data.siteImages })
 })
 
 // Delete grid image at position
-app.delete('/api/images/grid/:index', requireAuth, (req, res) => {
-  const data = loadData()
-  const index = parseInt(req.params.index)
-  if (isNaN(index) || index < 0 || index >= 16 || !data.grid || !data.grid[index]) {
-    return res.status(400).json({ error: 'Posição inválida ou vazia' })
+app.delete('/api/images/grid/:index', requireAuth, async (req, res) => {
+  try {
+    const data = loadData()
+    const index = parseInt(req.params.index)
+    if (isNaN(index) || index < 0 || index >= 16 || !data.grid || !data.grid[index]) {
+      return res.status(400).json({ error: 'Posição inválida ou vazia' })
+    }
+    await deleteEntryFile(data.grid[index])
+    data.grid[index] = null
+    saveData(data)
+    res.json({ success: true, images: data.grid })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao deletar' })
   }
-  const removed = data.grid[index]
-  const filePath = path.join(UPLOADS_DIR, removed.filename)
-  if (removed.filename.startsWith('upload-') && fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath)
-  }
-  data.grid[index] = null
-  saveData(data)
-  res.json({ success: true, images: data.grid })
 })
 
 // Delete kids photo at position
-app.delete('/api/images/kids/photo/:index', requireAuth, (req, res) => {
-  const data = loadData()
-  const index = parseInt(req.params.index)
-  if (isNaN(index) || index < 0 || index >= 4 || !data.kids || !data.kids.photos || !data.kids.photos[index]) {
-    return res.status(400).json({ error: 'Posição inválida ou vazia' })
+app.delete('/api/images/kids/photo/:index', requireAuth, async (req, res) => {
+  try {
+    const data = loadData()
+    const index = parseInt(req.params.index)
+    if (isNaN(index) || index < 0 || index >= 4 || !data.kids || !data.kids.photos || !data.kids.photos[index]) {
+      return res.status(400).json({ error: 'Posição inválida ou vazia' })
+    }
+    await deleteEntryFile(data.kids.photos[index])
+    data.kids.photos[index] = null
+    saveData(data)
+    res.json({ success: true, kids: data.kids })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao deletar' })
   }
-
-  const removed = data.kids.photos[index]
-  const filePath = path.join(UPLOADS_DIR, removed.filename || '')
-  if (removed.filename && removed.filename.startsWith('upload-') && fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath)
-  }
-  data.kids.photos[index] = null
-  saveData(data)
-  res.json({ success: true, kids: data.kids })
 })
 
-app.delete('/api/images/kids/boomerang', requireAuth, (req, res) => {
-  const data = loadData()
-  const old = data.kids && data.kids.boomerang
-  if (old && old.filename && old.filename.startsWith('video-')) {
-    const oldPath = path.join(UPLOADS_DIR, old.filename)
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+app.delete('/api/images/kids/boomerang', requireAuth, async (req, res) => {
+  try {
+    const data = loadData()
+    await deleteEntryFile(data.kids && data.kids.boomerang)
+    if (!data.kids || typeof data.kids !== 'object') data.kids = {}
+    data.kids.boomerang = null
+    saveData(data)
+    res.json({ success: true, kids: data.kids })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao deletar' })
   }
-  if (!data.kids || typeof data.kids !== 'object') data.kids = {}
-  data.kids.boomerang = null
-  saveData(data)
-  res.json({ success: true, kids: data.kids })
 })
 
 function updateEntryStyle(entry, stylePatch) {
@@ -518,16 +640,18 @@ app.put('/api/images/style/kids/:index', requireAuth, (req, res) => {
 })
 
 // --- Video management ---
-const videoStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase()
-    cb(null, `video-${Date.now()}${ext}`)
-  }
-})
+const videoStorageEngine = USE_CLOUDINARY
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+      filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase()
+        cb(null, `video-${Date.now()}${ext}`)
+      }
+    })
 
 const videoUpload = multer({
-  storage: videoStorage,
+  storage: videoStorageEngine,
   limits: { fileSize: 200 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase()
@@ -542,48 +666,46 @@ const videoUpload = multer({
 })
 
 // Upload kids boomerang (video)
-app.post('/api/images/kids/boomerang', requireAuth, videoUpload.single('video'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' })
-  const data = loadData()
-  if (!data.kids || typeof data.kids !== 'object') data.kids = {}
-
-  const old = data.kids.boomerang
-  if (old && old.filename && old.filename.startsWith('video-')) {
-    const oldPath = path.join(UPLOADS_DIR, old.filename)
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+app.post('/api/images/kids/boomerang', requireAuth, videoUpload.single('video'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' })
+    const data = loadData()
+    if (!data.kids || typeof data.kids !== 'object') data.kids = {}
+    await deleteEntryFile(data.kids.boomerang)
+    data.kids.boomerang = await processUploadedFile(req.file, 'video')
+    saveData(data)
+    res.json({ success: true, kids: data.kids })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao fazer upload do boomerang' })
   }
-
-  data.kids.boomerang = {
-    filename: req.file.filename,
-    src: `images/${req.file.filename}`
-  }
-  saveData(data)
-  res.json({ success: true, kids: data.kids })
 })
 
-app.post('/api/video', requireAuth, videoUpload.single('video'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' })
-  const data = loadData()
-  const old = data.video
-  if (old && old.filename && old.filename.startsWith('video-')) {
-    const oldPath = path.join(UPLOADS_DIR, old.filename)
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+app.post('/api/video', requireAuth, videoUpload.single('video'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' })
+    const data = loadData()
+    await deleteEntryFile(data.video)
+    data.video = await processUploadedFile(req.file, 'video')
+    saveData(data)
+    res.json({ success: true, video: data.video })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao fazer upload do vídeo' })
   }
-  data.video = { filename: req.file.filename, src: `images/${req.file.filename}` }
-  saveData(data)
-  res.json({ success: true, video: data.video })
 })
 
-app.delete('/api/video', requireAuth, (req, res) => {
-  const data = loadData()
-  const old = data.video
-  if (old && old.filename && old.filename.startsWith('video-')) {
-    const oldPath = path.join(UPLOADS_DIR, old.filename)
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+app.delete('/api/video', requireAuth, async (req, res) => {
+  try {
+    const data = loadData()
+    await deleteEntryFile(data.video)
+    data.video = { src: VIDEO_DEFAULT }
+    saveData(data)
+    res.json({ success: true, video: data.video })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao deletar vídeo' })
   }
-  data.video = { src: VIDEO_DEFAULT }
-  saveData(data)
-  res.json({ success: true, video: data.video })
 })
 
 // --- Inventory management ---
@@ -637,18 +759,26 @@ app.get('/admin', (req, res) => {
 })
 
 // --- Start server ---
-app.listen(PORT, () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`)
-  console.log(`Painel admin em http://localhost:${PORT}/admin`)
-  console.log(`Data file: ${DATA_FILE}`)
-  console.log(`Uploads dir: ${UPLOADS_DIR}`)
-  if (!process.env.ADMIN_PASSWORD) {
-    console.log('Senha padrão: vivis2026')
-  }
-  if (HAS_CROSS_ORIGIN) {
-    console.log(`CORS habilitado para: ${FRONTEND_ORIGINS.join(', ')}`)
-  }
-  if (!PERSISTENT_ROOT) {
-    console.log('Armazenamento persistente não configurado; uploads e dados usarão o disco local da aplicação.')
-  }
+initData().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Servidor rodando em http://localhost:${PORT}`)
+    console.log(`Painel admin em http://localhost:${PORT}/admin`)
+    console.log(`Data file: ${DATA_FILE}`)
+    console.log(`Uploads dir: ${UPLOADS_DIR}`)
+    if (USE_CLOUDINARY) {
+      console.log(`Cloudinary habilitado (cloud: ${process.env.CLOUDINARY_CLOUD_NAME})`)
+    }
+    if (!process.env.ADMIN_PASSWORD) {
+      console.log('Senha padrão: vivis2026')
+    }
+    if (HAS_CROSS_ORIGIN) {
+      console.log(`CORS habilitado para: ${FRONTEND_ORIGINS.join(', ')}`)
+    }
+    if (!PERSISTENT_ROOT && !USE_CLOUDINARY) {
+      console.log('Armazenamento persistente não configurado; uploads e dados usarão o disco local da aplicação.')
+    }
+  })
+}).catch(err => {
+  console.error('Falha ao inicializar dados:', err)
+  process.exit(1)
 })
