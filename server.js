@@ -27,62 +27,85 @@ const SITE_IMAGE_DEFAULTS = {
   depois: 'images/depois.jpeg'
 }
 const VIDEO_DEFAULT = 'assets/videos/espaço.mp4'
+const CARROSSEL_DEFAULTS = [
+  'images/carrossel1.jpeg',
+  'images/carrossel2.jpeg',
+  'images/carrossel3.jpeg'
+]
+const GRID_DEFAULTS = Array.from({ length: 16 }, (_, i) => `images/galeria${i + 5}.jpeg`)
+
+function normalizeImageEntry(entry) {
+  if (!entry) return null
+  if (typeof entry === 'string') {
+    return { filename: path.basename(entry), src: entry }
+  }
+  if (typeof entry === 'object' && entry.src) {
+    return {
+      filename: entry.filename || path.basename(entry.src),
+      src: entry.src
+    }
+  }
+  return null
+}
+
+function normalizeData(rawData = {}) {
+  const data = { ...rawData }
+  data.clicks = Number.isFinite(data.clicks) ? data.clicks : 0
+
+  if (!Array.isArray(data.carrossel)) {
+    data.carrossel = CARROSSEL_DEFAULTS.map(src => ({ filename: path.basename(src), src }))
+  } else {
+    data.carrossel = data.carrossel.map(normalizeImageEntry).filter(Boolean)
+  }
+
+  if (!Array.isArray(data.grid)) {
+    data.grid = GRID_DEFAULTS.map(src => ({ filename: path.basename(src), src }))
+  } else {
+    data.grid = data.grid
+      .map(item => (item === null ? null : normalizeImageEntry(item)))
+      .slice(0, 16)
+    while (data.grid.length < 16) data.grid.push(null)
+  }
+
+  if (!data.siteImages || typeof data.siteImages !== 'object') data.siteImages = {}
+  for (const [name, defaultSrc] of Object.entries(SITE_IMAGE_DEFAULTS)) {
+    if (!data.siteImages[name]) {
+      data.siteImages[name] = { filename: path.basename(defaultSrc), src: defaultSrc }
+    } else {
+      const normalized = normalizeImageEntry(data.siteImages[name])
+      data.siteImages[name] = normalized || { filename: path.basename(defaultSrc), src: defaultSrc }
+    }
+  }
+
+  if (!data.video || typeof data.video !== 'object' || !data.video.src) {
+    data.video = { src: VIDEO_DEFAULT }
+  }
+
+  if (!Array.isArray(data.estoque)) data.estoque = []
+
+  return data
+}
 
 function loadData() {
   try {
     const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'))
-    // Migrate: add missing fields on existing data.json
-    let changed = false
-    if (!data.siteImages) {
-      data.siteImages = {
-        capa:     { src: SITE_IMAGE_DEFAULTS.capa },
-        sobrenos: { src: SITE_IMAGE_DEFAULTS.sobrenos },
-        antes:    { src: SITE_IMAGE_DEFAULTS.antes },
-        depois:   { src: SITE_IMAGE_DEFAULTS.depois }
-      }
-      changed = true
-    }
-    if (!data.video) {
-      data.video = { src: VIDEO_DEFAULT }
-      changed = true
-    }
-    if (changed) saveData(data)
-    return data
+    const normalized = normalizeData(data)
+    if (JSON.stringify(normalized) !== JSON.stringify(data)) saveData(normalized)
+    return normalized
   } catch {
-    const defaultData = {
+    const defaultData = normalizeData({
       clicks: 0,
-      carrossel: [
-        { filename: 'carrossel1.jpeg', src: 'images/carrossel1.jpeg' },
-        { filename: 'carrossel2.jpeg', src: 'images/carrossel2.jpeg' },
-        { filename: 'carrossel3.jpeg', src: 'images/carrossel3.jpeg' }
-      ],
-      grid: [
-        { filename: 'galeria5.jpeg',  src: 'images/galeria5.jpeg' },
-        { filename: 'galeria6.jpeg',  src: 'images/galeria6.jpeg' },
-        { filename: 'galeria7.jpeg',  src: 'images/galeria7.jpeg' },
-        { filename: 'galeria8.jpeg',  src: 'images/galeria8.jpeg' },
-        { filename: 'galeria9.jpeg',  src: 'images/galeria9.jpeg' },
-        { filename: 'galeria10.jpeg', src: 'images/galeria10.jpeg' },
-        { filename: 'galeria11.jpeg', src: 'images/galeria11.jpeg' },
-        { filename: 'galeria12.jpeg', src: 'images/galeria12.jpeg' },
-        { filename: 'galeria13.jpeg', src: 'images/galeria13.jpeg' },
-        { filename: 'galeria14.jpeg', src: 'images/galeria14.jpeg' },
-        { filename: 'galeria15.jpeg', src: 'images/galeria15.jpeg' },
-        { filename: 'galeria16.jpeg', src: 'images/galeria16.jpeg' },
-        { filename: 'galeria17.jpeg', src: 'images/galeria17.jpeg' },
-        { filename: 'galeria18.jpeg', src: 'images/galeria18.jpeg' },
-        { filename: 'galeria19.jpeg', src: 'images/galeria19.jpeg' },
-        { filename: 'galeria20.jpeg', src: 'images/galeria20.jpeg' }
-      ],
+      carrossel: CARROSSEL_DEFAULTS,
+      grid: GRID_DEFAULTS,
       siteImages: {
-        capa:     { filename: 'capa.png',     src: 'images/capa.png' },
-        sobrenos: { filename: 'sobrenos.png', src: 'images/sobrenos.png' },
-        antes:    { filename: 'antes.jpeg',   src: 'images/antes.jpeg' },
-        depois:   { filename: 'depois.jpeg',  src: 'images/depois.jpeg' }
+        capa: SITE_IMAGE_DEFAULTS.capa,
+        sobrenos: SITE_IMAGE_DEFAULTS.sobrenos,
+        antes: SITE_IMAGE_DEFAULTS.antes,
+        depois: SITE_IMAGE_DEFAULTS.depois
       },
       video: { src: VIDEO_DEFAULT },
       estoque: []
-    }
+    })
     saveData(defaultData)
     return defaultData
   }
