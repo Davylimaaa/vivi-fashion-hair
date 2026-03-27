@@ -100,6 +100,35 @@ function setVisible(selector, isVisible) {
  el.style.display = isVisible ? '' : 'none'
 }
 
+const galleryGrid = document.querySelector('.galeria-grid')
+const initialGalleryGridMarkup = galleryGrid ? galleryGrid.innerHTML : ''
+
+function renderGalleryGrid(images) {
+ const gridItems = Array.isArray(images)
+  ? images.filter(img => img && img.src)
+  : []
+
+ if (!galleryGrid) return
+
+ if (gridItems.length === 0) {
+  galleryGrid.innerHTML = ''
+  setVisible('.galeria-grid', false)
+  return
+ }
+
+ galleryGrid.innerHTML = gridItems.map((img, i) =>
+  withViewOverlay(assetUrl(img.src), `Grid ${i + 1}`)
+ ).join('')
+ setVisible('.galeria-grid', true)
+}
+
+function restoreStaticGalleryGrid() {
+ if (!galleryGrid || !initialGalleryGridMarkup.trim()) return
+ galleryGrid.innerHTML = initialGalleryGridMarkup
+ setVisible('.galeria-grid', true)
+ enhanceGalleryGridWithViewButtons()
+}
+
 /*
   Track "Agendar" button clicks
 */
@@ -133,22 +162,7 @@ function loadDynamicImages() {
     setVisible('.galeria-carousel', false)
    }
    // Grid - filter out null positions
-   if (data.grid) {
-    const gridItems = data.grid.filter(img => img !== null)
-    if (gridItems.length > 0) {
-     const grid = document.querySelector('.grid-4x4')
-     if (grid) {
-      grid.innerHTML = gridItems.map((img, i) =>
-       withViewOverlay(assetUrl(img.src), `Grid ${i + 1}`)
-      ).join('')
-      setVisible('.galeria-grid', true)
-     }
-    } else {
-     setVisible('.galeria-grid', false)
-    }
-   } else {
-    setVisible('.galeria-grid', false)
-   }
+    renderGalleryGrid(data.grid)
    // Site images (capa, sobrenos, antes, depois)
    if (data.siteImages) {
     const siteMap = {
@@ -183,10 +197,12 @@ function loadDynamicImages() {
     setVisible('.video-bg', false)
    }
   })
-  .catch(() => {}) // Fallback: keep static images if server is not running
+  .catch(() => {
+   restoreStaticGalleryGrid()
+  }) // Fallback: keep static images if server is not running
 }
 
-  enhanceGalleryGridWithViewButtons()
+enhanceGalleryGridWithViewButtons()
 loadDynamicImages()
 
 /*
