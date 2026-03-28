@@ -198,13 +198,24 @@ function deleteFromCloudinary(publicId, resourceType = 'image') {
   return cloudinary.uploader.destroy(publicId, { resource_type: resourceType })
 }
 
-function fetchCloudinaryRaw(publicId) {
+function fetchUrl(url, redirectsLeft) {
   return new Promise((resolve, reject) => {
-    const url = cloudinary.url(publicId, { resource_type: 'raw' }) + `?_=${Date.now()}`
-    https.get(url, (res) => {
-      if (res.statusCode === 404) {
+    const mod = url.startsWith('https') ? https : require('http')
+    mod.get(url, (res) => {
+      const { statusCode, headers } = res
+      if ([301, 302, 303, 307, 308].includes(statusCode) && headers.location && redirectsLeft > 0) {
+        res.resume()
+        fetchUrl(headers.location, redirectsLeft - 1).then(resolve, reject)
+        return
+      }
+      if (statusCode === 404) {
         res.resume()
         reject(new Error('Not found'))
+        return
+      }
+      if (statusCode !== 200) {
+        res.resume()
+        reject(new Error(`HTTP ${statusCode}`))
         return
       }
       let body = ''
@@ -215,13 +226,20 @@ function fetchCloudinaryRaw(publicId) {
   })
 }
 
+function fetchCloudinaryRaw(publicId) {
+  const url = cloudinary.url(publicId, { resource_type: 'raw' }) + `?_=${Date.now()}`
+  console.log('Attempting Cloudinary data restore from:', url)
+  return fetchUrl(url, 5)
+}
+
 function saveDataToCloudinary(data) {
   if (!USE_CLOUDINARY) return Promise.resolve()
   const buffer = Buffer.from(JSON.stringify(data, null, 2), 'utf8')
   return uploadToCloudinary(buffer, {
     public_id: CLOUDINARY_DATA_PUBLIC_ID,
     resource_type: 'raw',
-    overwrite: true
+    overwrite: true,
+    invalidate: true
   })
 }
 
@@ -249,7 +267,7 @@ async function initData() {
       console.log('Data loaded from Cloudinary backup')
       return
     } catch (err) {
-      console.log('No Cloudinary data backup found, trying local file')
+      console.log('Cloudinary restore failed:', err.message, '— trying local file')
     }
   }
 
