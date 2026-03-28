@@ -179,11 +179,12 @@ function restoreStaticGalleryGrid() {
 function renderKidsSection(kids) {
  const section = document.getElementById('kids')
  const grid = document.getElementById('kids-grid')
+ const emptyMessage = document.getElementById('kids-empty-message')
  const boomerangWrap = document.getElementById('kids-boomerang')
  const boomerangSource = document.querySelector('#kids-boomerang video source')
  const boomerangVideo = document.querySelector('#kids-boomerang video')
 
- if (!section || !grid || !boomerangWrap || !boomerangSource || !boomerangVideo) return
+ if (!section || !grid || !emptyMessage || !boomerangWrap || !boomerangSource || !boomerangVideo) return
 
  const photos = Array.isArray(kids && kids.photos)
   ? kids.photos.map(normalizeImageEntry).filter(Boolean)
@@ -191,13 +192,14 @@ function renderKidsSection(kids) {
  const boomerang = normalizeImageEntry(kids && kids.boomerang)
  const hasContent = photos.length > 0 || !!boomerang
 
- setVisible('#kids', hasContent)
  if (!hasContent) {
   grid.innerHTML = ''
+  emptyMessage.style.display = ''
   boomerangWrap.style.display = 'none'
   return
  }
 
+ emptyMessage.style.display = 'none'
  grid.innerHTML = photos.map((entry, i) => `
   <div class="kids-card img-zoom-wrap">
    <img src="${assetUrl(entry.src)}" alt="Atendimento Kids ${i + 1}" style="${imageStyleAttr(entry.style)}">

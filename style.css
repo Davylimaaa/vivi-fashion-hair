@@ -933,6 +933,15 @@ footer .social a:hover {
   max-width: 560px;
 }
 
+.kids-empty-message {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px dashed var(--base-color);
+  border-radius: 0.5rem;
+  background: var(--base-color-second);
+  color: var(--title-color);
+}
+
 .kids-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
