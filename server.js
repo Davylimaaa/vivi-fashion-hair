@@ -57,6 +57,23 @@ const CARROSSEL_DEFAULTS = [
 ]
 const GRID_DEFAULTS = Array.from({ length: 16 }, (_, i) => `images/galeria${i + 5}.jpeg`)
 
+function isRemoteSrc(src) {
+  return /^https?:\/\//i.test(String(src || ''))
+}
+
+function localAssetExists(src) {
+  if (!src || isRemoteSrc(src)) return true
+  const cleanSrc = String(src).replace(/^\/+/, '').replace(/\//g, path.sep)
+  return fs.existsSync(path.join(__dirname, cleanSrc))
+}
+
+function sanitizeMediaEntry(entry, fallback = null) {
+  const normalized = normalizeImageEntry(entry)
+  if (!normalized) return fallback
+  if (normalized.public_id || localAssetExists(normalized.src)) return normalized
+  return fallback
+}
+
 function normalizeImageStyle(style) {
   const src = style && typeof style === 'object' ? style : {}
   const fit = src.fit === 'contain' ? 'contain' : 'cover'
@@ -103,14 +120,16 @@ function normalizeData(rawData = {}) {
   if (!Array.isArray(data.carrossel)) {
     data.carrossel = CARROSSEL_DEFAULTS.map(src => ({ filename: path.basename(src), src }))
   } else {
-    data.carrossel = data.carrossel.map(normalizeImageEntry).filter(Boolean)
+    data.carrossel = data.carrossel
+      .map(item => sanitizeMediaEntry(item, null))
+      .filter(Boolean)
   }
 
   if (!Array.isArray(data.grid)) {
     data.grid = GRID_DEFAULTS.map(src => ({ filename: path.basename(src), src }))
   } else {
     data.grid = data.grid
-      .map(item => (item === null ? null : normalizeImageEntry(item)))
+      .map(item => (item === null ? null : sanitizeMediaEntry(item, null)))
       .slice(0, 16)
     while (data.grid.length < 16) data.grid.push(null)
   }
@@ -120,13 +139,15 @@ function normalizeData(rawData = {}) {
     if (!data.siteImages[name]) {
       data.siteImages[name] = { filename: path.basename(defaultSrc), src: defaultSrc }
     } else {
-      const normalized = normalizeImageEntry(data.siteImages[name])
+      const normalized = sanitizeMediaEntry(data.siteImages[name], null)
       data.siteImages[name] = normalized || { filename: path.basename(defaultSrc), src: defaultSrc }
     }
   }
 
   if (!data.video || typeof data.video !== 'object' || !data.video.src) {
     data.video = { src: VIDEO_DEFAULT }
+  } else {
+    data.video = sanitizeMediaEntry(data.video, { src: VIDEO_DEFAULT })
   }
 
   if (!data.kids || typeof data.kids !== 'object') data.kids = {}
@@ -134,11 +155,11 @@ function normalizeData(rawData = {}) {
     data.kids.photos = Array.from({ length: 4 }, () => null)
   } else {
     data.kids.photos = data.kids.photos
-      .map(item => (item === null ? null : normalizeImageEntry(item)))
+      .map(item => (item === null ? null : sanitizeMediaEntry(item, null)))
       .slice(0, 4)
     while (data.kids.photos.length < 4) data.kids.photos.push(null)
   }
-  data.kids.boomerang = normalizeImageEntry(data.kids.boomerang)
+  data.kids.boomerang = sanitizeMediaEntry(data.kids.boomerang, null)
 
   if (!Array.isArray(data.estoque)) data.estoque = []
 
@@ -213,26 +234,37 @@ function saveData(data) {
 }
 
 async function initData() {
-  // 1. Try local file first (dev or Render with disk)
-  try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf8')
-    _data = normalizeData(JSON.parse(raw))
-    console.log('Data loaded from local file')
-    return
-  } catch {}
-
-  // 2. Try Cloudinary raw backup
+  // 1. Try Cloudinary raw backup first when enabled
   if (USE_CLOUDINARY) {
     try {
       const jsonStr = await fetchCloudinaryRaw(CLOUDINARY_DATA_PUBLIC_ID)
-      _data = normalizeData(JSON.parse(jsonStr))
-      saveDataLocal(_data)
+      const parsed = JSON.parse(jsonStr)
+      _data = normalizeData(parsed)
+      if (JSON.stringify(parsed) !== JSON.stringify(_data)) {
+        saveData(_data)
+        console.log('Cloudinary backup sanitized after startup')
+      } else {
+        saveDataLocal(_data)
+      }
       console.log('Data loaded from Cloudinary backup')
       return
     } catch (err) {
-      console.log('No Cloudinary data backup found, using defaults')
+      console.log('No Cloudinary data backup found, trying local file')
     }
   }
+
+  // 2. Try local file (dev or Render with disk)
+  try {
+    const raw = fs.readFileSync(DATA_FILE, 'utf8')
+    const parsed = JSON.parse(raw)
+    _data = normalizeData(parsed)
+    if (JSON.stringify(parsed) !== JSON.stringify(_data)) {
+      saveData(_data)
+      console.log('Data sanitized after startup')
+    }
+    console.log('Data loaded from local file')
+    return
+  } catch {}
 
   // 3. Use defaults
   _data = normalizeData({})
