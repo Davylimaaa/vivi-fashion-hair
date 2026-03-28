@@ -1,0 +1,19 @@
+name: Keep Alive
+
+on:
+  schedule:
+    - cron: '*/14 * * * *'  # A cada 14 minutos
+  workflow_dispatch:          # Permite rodar manualmente
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping site
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.RENDER_URL }}/api/health")
+          echo "Status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "Site retornou $STATUS"
+            exit 1
+          fi

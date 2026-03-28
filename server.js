@@ -790,6 +790,29 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin', 'index.html'))
 })
 
+// --- Keep-alive self-ping ---
+function startKeepAlive() {
+  const siteUrl = process.env.RENDER_EXTERNAL_URL || process.env.SITE_URL
+  if (!siteUrl) return
+  const pingInterval = 12 * 60 * 1000 // 12 minutes
+  setInterval(() => {
+    const url = siteUrl.replace(/\/$/, '') + '/api/health'
+    const mod = url.startsWith('https') ? https : require('http')
+    mod.get(url, (res) => {
+      res.resume()
+      console.log(`Keep-alive ping: ${res.statusCode}`)
+    }).on('error', (err) => {
+      console.error('Keep-alive ping error:', err.message)
+    })
+  }, pingInterval)
+  console.log(`Keep-alive ativo (ping a cada 12min) → ${siteUrl}`)
+}
+
+// Health check route used by keep-alive and monitoring services
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() })
+})
+
 // --- Start server ---
 initData().then(() => {
   app.listen(PORT, () => {
@@ -809,6 +832,7 @@ initData().then(() => {
     if (!PERSISTENT_ROOT && !USE_CLOUDINARY) {
       console.log('Armazenamento persistente não configurado; uploads e dados usarão o disco local da aplicação.')
     }
+    startKeepAlive()
   })
 }).catch(err => {
   console.error('Falha ao inicializar dados:', err)
